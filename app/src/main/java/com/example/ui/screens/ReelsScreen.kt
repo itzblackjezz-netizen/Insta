@@ -31,7 +31,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.FavoriteBorder
-import androidx.compose.material.icons.outlined.Send
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -479,7 +479,7 @@ private fun ReelItem(
             )
 
             ActionRailItem(
-                icon = Icons.Outlined.Send,
+                icon = Icons.AutoMirrored.Outlined.Send,
                 count = formatReelCount(reel.sharesCount),
                 tint = Color.White,
                 contentDescription = "Share reel",
