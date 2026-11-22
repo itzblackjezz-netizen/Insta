@@ -49,6 +49,8 @@ private class FakeSocialDataSource : SocialDataSource {
 
     override fun observeUserProfile(userId: String): Flow<FirestoreUserProfile?> = profileFlow
     override fun observeUserPosts(userId: String): Flow<List<FirestoreUserPost>> = userPostsFlow
+    override suspend fun fetchLatestUserPosts(userId: String): Result<List<FirestoreUserPost>> =
+        Result.success(userPostsFlow.value)
     override fun observePostStates(userId: String): Flow<List<FirestorePostState>> = postStatesFlow
     override fun observeUserComments(userId: String): Flow<List<FirestoreUserComment>> = userCommentsFlow
 
@@ -365,5 +367,26 @@ class InstagramViewModelTest {
         viewModel.closeAiCompanion()
         assertNull(viewModel.activeAiCompanionPost.value)
         assertEquals(AiCompanionUiState.Idle, viewModel.aiCompanionState.value)
+    }
+
+    @Test
+    fun testRefreshFeedFetchesLatestFirestorePosts() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.posts.collect {} }
+        val remotePost = FirestoreUserPost(
+            id = "remote_post_99",
+            userId = "test_user_123",
+            authorUsername = "alex.creates",
+            authorAvatarUrl = "https://example.com/avatar.jpg",
+            caption = "Freshly fetched from Firestore #refresh",
+            imageUrl = "https://example.com/photo.jpg",
+            hashtags = listOf("#refresh"),
+            likesCount = 5L
+        )
+        repository.userPostsFlow.value = listOf(remotePost)
+
+        viewModel.refreshFeed()
+
+        assertFalse(viewModel.isRefreshingFeed.value)
+        assertTrue(viewModel.posts.value.any { it.id == "remote_post_99" })
     }
 }

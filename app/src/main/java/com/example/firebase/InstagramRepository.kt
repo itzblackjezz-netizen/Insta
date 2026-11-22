@@ -11,6 +11,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.snapshots
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -23,6 +24,7 @@ import kotlinx.coroutines.tasks.await
 interface SocialDataSource {
     fun observeUserProfile(userId: String): Flow<FirestoreUserProfile?>
     fun observeUserPosts(userId: String): Flow<List<FirestoreUserPost>>
+    suspend fun fetchLatestUserPosts(userId: String): Result<List<FirestoreUserPost>>
     fun observePostStates(userId: String): Flow<List<FirestorePostState>>
     fun observeUserComments(userId: String): Flow<List<FirestoreUserComment>>
     suspend fun ensureUserProfile(userId: String, displayName: String?, photoUrl: String?): Result<Unit>
@@ -110,6 +112,33 @@ class InstagramRepository(
                     throw error
                 }
         )
+    }
+
+    override suspend fun fetchLatestUserPosts(userId: String): Result<List<FirestoreUserPost>> {
+        val path = "users/$userId/posts"
+        return try {
+            val uid = requireUserId()
+            check(uid == userId) { "Signed-in user mismatch" }
+            val query = db.collection("users").document(uid).collection("posts")
+                .orderBy("createdAt", Query.Direction.DESCENDING)
+            val snapshot = try {
+                query.get(Source.SERVER).await()
+            } catch (serverError: Exception) {
+                if (serverError is CancellationException) throw serverError
+                // Fallback to default source if offline while preserving server-first semantics
+                query.get().await()
+            }
+            val posts = snapshot.toObjects(
+                FirestoreUserPost::class.java,
+                DocumentSnapshot.ServerTimestampBehavior.ESTIMATE
+            )
+            Result.success(posts)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.LIST, path)
+            Result.failure(e)
+        }
     }
 
     override fun observePostStates(userId: String): Flow<List<FirestorePostState>> = flow {

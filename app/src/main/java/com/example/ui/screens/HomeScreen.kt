@@ -6,9 +6,13 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -25,12 +29,15 @@ import com.example.ui.components.PostCard
 import com.example.ui.components.StoriesTray
 import com.example.ui.theme.IgBlue
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     currentUser: User,
     stories: List<Story>,
     posts: List<Post>,
+    isRefreshing: Boolean,
     isLoadingMore: Boolean,
+    onRefresh: () -> Unit,
     onStoryClick: (Story) -> Unit,
     onAddStoryClick: () -> Unit,
     onLikeClick: (String) -> Unit,
@@ -46,6 +53,7 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
+    val pullToRefreshState = rememberPullToRefreshState()
 
     // Infinite scroll detection: when approaching the end of the list, load more
     val shouldLoadMore by remember {
@@ -62,79 +70,96 @@ fun HomeScreen(
         }
     }
 
-    Box(
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
+        state = pullToRefreshState,
+        indicator = {
+            PullToRefreshDefaults.Indicator(
+                state = pullToRefreshState,
+                isRefreshing = isRefreshing,
+                containerColor = MaterialTheme.colorScheme.surface,
+                color = IgBlue,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
+        },
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-        contentAlignment = Alignment.TopCenter
+            .background(MaterialTheme.colorScheme.background)
+            .testTag("home_pull_to_refresh")
     ) {
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .fillMaxHeight()
-                .widthIn(max = 600.dp)
-                .fillMaxWidth()
-                .testTag("home_feed_list")
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.TopCenter
         ) {
-            // Stories Tray at Top
-            item {
-                StoriesTray(
-                    currentUser = currentUser,
-                    stories = stories,
-                    onStoryClick = onStoryClick,
-                    onAddStoryClick = onAddStoryClick
-                )
-                HorizontalDivider(
-                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
-                    thickness = 0.5.dp
-                )
-            }
-
-            // Feed Posts
-            items(posts, key = { it.id }) { post ->
-                PostCard(
-                    post = post,
-                    onLikeClick = { onLikeClick(post.id) },
-                    onDoubleTapLike = { onDoubleTapLike(post.id) },
-                    onCommentClick = { onCommentClick(post) },
-                    onShareClick = { onShareClick(post) },
-                    onSaveClick = { onSaveClick(post.id) },
-                    onOptionsClick = { onOptionsClick(post) },
-                    onAiInsightsClick = { onAiInsightsClick(post) },
-                    onUserClick = { onUserClick(post.user) },
-                    onAddQuickComment = { text -> onAddQuickComment(post.id, text) }
-                )
-            }
-
-            // Loading more spinner at bottom of feed
-            if (isLoadingMore) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .widthIn(max = 600.dp)
+                    .fillMaxWidth()
+                    .testTag("home_feed_list")
+            ) {
+                // Stories Tray at Top
                 item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(
-                            color = IgBlue,
-                            modifier = Modifier.size(28.dp),
-                            strokeWidth = 2.5.dp
-                        )
-                    }
+                    StoriesTray(
+                        currentUser = currentUser,
+                        stories = stories,
+                        onStoryClick = onStoryClick,
+                        onAddStoryClick = onAddStoryClick
+                    )
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+                        thickness = 0.5.dp
+                    )
                 }
-            } else {
-                item {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 32.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "You're all caught up ✨",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+
+                // Feed Posts
+                items(posts, key = { it.id }) { post ->
+                    PostCard(
+                        post = post,
+                        onLikeClick = { onLikeClick(post.id) },
+                        onDoubleTapLike = { onDoubleTapLike(post.id) },
+                        onCommentClick = { onCommentClick(post) },
+                        onShareClick = { onShareClick(post) },
+                        onSaveClick = { onSaveClick(post.id) },
+                        onOptionsClick = { onOptionsClick(post) },
+                        onAiInsightsClick = { onAiInsightsClick(post) },
+                        onUserClick = { onUserClick(post.user) },
+                        onAddQuickComment = { text -> onAddQuickComment(post.id, text) }
+                    )
+                }
+
+                // Loading more spinner at bottom of feed
+                if (isLoadingMore) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = IgBlue,
+                                modifier = Modifier.size(28.dp),
+                                strokeWidth = 2.5.dp
+                            )
+                        }
+                    }
+                } else {
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                text = "You're all caught up ✨",
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }

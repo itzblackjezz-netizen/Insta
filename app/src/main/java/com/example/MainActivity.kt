@@ -218,7 +218,9 @@ fun InstagramApp(
     val showEditProfileDialog by viewModel.showEditProfileDialog.collectAsStateWithLifecycle()
     val notifications by viewModel.notifications.collectAsStateWithLifecycle()
     val directMessages by viewModel.directMessages.collectAsStateWithLifecycle()
+    val isRefreshingFeed by viewModel.isRefreshingFeed.collectAsStateWithLifecycle()
     val isLoadingMore by viewModel.isLoadingMorePosts.collectAsStateWithLifecycle()
+    val followedUsers by viewModel.followedUsers.collectAsStateWithLifecycle()
     val snackbarMessage by viewModel.snackbarMessage.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -274,7 +276,9 @@ fun InstagramApp(
                         stories = stories,
                         reels = reels,
                         currentUser = currentUser,
+                        isRefreshingFeed = isRefreshingFeed,
                         isLoadingMore = isLoadingMore,
+                        followedUsers = followedUsers,
                         aiCaptionState = aiCaptionState,
                         onSignOutClick = onSignOutClick,
                         onOpenUpdatesSettings = onOpenUpdatesSettings
@@ -325,7 +329,9 @@ fun InstagramApp(
                         stories = stories,
                         reels = reels,
                         currentUser = currentUser,
+                        isRefreshingFeed = isRefreshingFeed,
                         isLoadingMore = isLoadingMore,
+                        followedUsers = followedUsers,
                         aiCaptionState = aiCaptionState,
                         onSignOutClick = onSignOutClick,
                         onOpenUpdatesSettings = onOpenUpdatesSettings
@@ -435,7 +441,9 @@ private fun ScreenContent(
     stories: List<com.example.model.Story>,
     reels: List<com.example.model.Reel>,
     currentUser: com.example.model.User,
+    isRefreshingFeed: Boolean,
     isLoadingMore: Boolean,
+    followedUsers: Map<String, Boolean>,
     aiCaptionState: com.example.ui.viewmodel.AiCaptionUiState,
     onSignOutClick: () -> Unit,
     onOpenUpdatesSettings: () -> Unit
@@ -446,7 +454,9 @@ private fun ScreenContent(
                 currentUser = currentUser,
                 stories = stories,
                 posts = posts,
+                isRefreshing = isRefreshingFeed,
                 isLoadingMore = isLoadingMore,
+                onRefresh = { viewModel.refreshFeed() },
                 onStoryClick = { story -> viewModel.openStory(story) },
                 onAddStoryClick = { viewModel.selectTab(NavigationTab.CREATE) },
                 onLikeClick = { postId -> viewModel.toggleLikePost(postId) },
@@ -462,7 +472,19 @@ private fun ScreenContent(
             )
         }
         NavigationTab.EXPLORE -> {
-            ExploreScreen()
+            ExploreScreen(
+                feedPosts = posts,
+                followedUsers = followedUsers,
+                onToggleFollowUser = { userId -> viewModel.toggleFollowUser(userId) },
+                onLikePost = { postId -> viewModel.toggleLikePost(postId) },
+                onDoubleTapLikePost = { postId -> viewModel.doubleTapLikePost(postId) },
+                onCommentPost = { post -> viewModel.openComments(post) },
+                onSharePost = { post -> viewModel.openShare(post) },
+                onSavePost = { postId -> viewModel.toggleSavePost(postId) },
+                onOptionsPost = { post -> viewModel.openOptions(post) },
+                onAiInsightsPost = { post -> viewModel.openAiCompanion(post) },
+                onAddQuickComment = { postId, text -> viewModel.addComment(postId, text) }
+            )
         }
         NavigationTab.CREATE -> {
             CreatePostScreen(

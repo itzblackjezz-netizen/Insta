@@ -16,12 +16,14 @@ import com.example.model.*
 import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -60,8 +62,15 @@ class InstagramViewModel(
 ) : ViewModel() {
 
     private val _recycledFeedPosts = MutableStateFlow<List<Post>>(emptyList())
-    private val _followedUsersOverride = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+    private val _followedUsersOverride = MutableStateFlow(
+        SampleData.sampleUsers.associate { it.id to it.isFollowing }
+    )
+    val followedUsers: StateFlow<Map<String, Boolean>> = _followedUsersOverride.asStateFlow()
     private val _commentLikesOverride = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+
+    private val _isRefreshingFeed = MutableStateFlow(false)
+    val isRefreshingFeed: StateFlow<Boolean> = _isRefreshingFeed.asStateFlow()
+    private val _manualRefreshedUserPosts = MutableStateFlow<List<FirestoreUserPost>?>(null)
 
     private val _syncState = MutableStateFlow<FirestoreSyncState>(FirestoreSyncState.Loading)
     val syncState: StateFlow<FirestoreSyncState> = _syncState.asStateFlow()
@@ -91,6 +100,7 @@ class InstagramViewModel(
         )
 
     private val firestoreUserPosts: StateFlow<List<FirestoreUserPost>> = repository.observeUserPosts(currentUserId)
+        .onEach { _manualRefreshedUserPosts.value = null }
         .catch { error ->
             handleStreamException("user posts", error)
             emit(emptyList())
@@ -100,6 +110,13 @@ class InstagramViewModel(
             started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
             initialValue = emptyList()
         )
+
+    private val effectiveUserPosts: Flow<List<FirestoreUserPost>> = combine(
+        firestoreUserPosts,
+        _manualRefreshedUserPosts
+    ) { livePosts, refreshedPosts ->
+        refreshedPosts ?: livePosts
+    }
 
     private val firestorePostStates: StateFlow<List<FirestorePostState>> = repository.observePostStates(currentUserId)
         .catch { error ->
@@ -125,7 +142,7 @@ class InstagramViewModel(
 
     val posts: StateFlow<List<Post>> = combine(
         currentUser,
-        firestoreUserPosts,
+        effectiveUserPosts,
         firestorePostStates,
         firestoreUserComments,
         _recycledFeedPosts
@@ -698,6 +715,26 @@ class InstagramViewModel(
     private fun extractHashtags(text: String): List<String> {
         val regex = Regex("#(\\w+)")
         return regex.findAll(text).map { it.value }.toList()
+    }
+
+    fun refreshFeed() {
+        if (_isRefreshingFeed.value) return
+        viewModelScope.launch {
+            _isRefreshingFeed.value = true
+            try {
+                val res = repository.fetchLatestUserPosts(currentUserId)
+                res.fold(
+                    onSuccess = { latestPosts ->
+                        _manualRefreshedUserPosts.value = latestPosts
+                    },
+                    onFailure = { err ->
+                        _snackbarMessage.value = err.localizedMessage ?: "Failed to refresh feed"
+                    }
+                )
+            } finally {
+                _isRefreshingFeed.value = false
+            }
+        }
     }
 
     fun loadMorePosts() {
