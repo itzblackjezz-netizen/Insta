@@ -77,7 +77,9 @@ enum class NotificationType {
     LIKE,
     COMMENT,
     FOLLOW,
-    MENTION
+    MENTION,
+    STORY_INTERACTION,
+    FOLLOW_REQUEST
 }
 
 data class NotificationItem(
@@ -87,6 +89,7 @@ data class NotificationItem(
     val text: String,
     val postThumbnailUrl: String? = null,
     val postId: String? = null,
+    val storyId: String? = null,
     val timestamp: String,
     val isFollowingBack: Boolean = false,
     val isRead: Boolean = false

@@ -412,14 +412,30 @@ fun InstagramApp(
                 notifications = notifications,
                 followedUsers = followedUsers,
                 onToggleFollowUser = { userId -> viewModel.toggleFollowUser(userId) },
+                onConfirmFollowRequest = { notifId -> viewModel.confirmFollowRequest(notifId) },
+                onDeleteFollowRequest = { notifId -> viewModel.deleteFollowRequest(notifId) },
                 onPostNotificationClick = { item ->
                     val linkedPost = item.postId?.let { id -> posts.firstOrNull { it.id == id } }
-                    if (linkedPost != null) {
-                        viewModel.setShowNotifications(false)
-                        viewModel.openComments(linkedPost)
-                    } else if (item.type == com.example.model.NotificationType.FOLLOW) {
-                        viewModel.toggleFollowUser(item.user.id)
+                    val linkedStoryId = item.storyId
+                    when {
+                        linkedPost != null -> {
+                            viewModel.setShowNotifications(false)
+                            viewModel.openComments(linkedPost)
+                        }
+                        item.type == com.example.model.NotificationType.STORY_INTERACTION && linkedStoryId != null -> {
+                            viewModel.setShowNotifications(false)
+                            viewModel.openStoryById(linkedStoryId)
+                        }
+                        item.type == com.example.model.NotificationType.FOLLOW ||
+                            item.type == com.example.model.NotificationType.FOLLOW_REQUEST -> {
+                            viewModel.setShowNotifications(false)
+                            viewModel.openUserProfile(item.user)
+                        }
                     }
+                },
+                onUserClick = { targetUser ->
+                    viewModel.setShowNotifications(false)
+                    viewModel.openUserProfile(targetUser)
                 },
                 onSimulateActivity = { viewModel.simulateLocalActivity() },
                 onBack = { viewModel.setShowNotifications(false) }

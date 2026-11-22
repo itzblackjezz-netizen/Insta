@@ -512,6 +512,24 @@ object SampleData {
 
     val sampleNotifications = listOf(
         NotificationItem(
+            id = "notif_req_1",
+            user = sampleUsers[3],
+            type = NotificationType.FOLLOW_REQUEST,
+            text = "requested to follow you.",
+            timestamp = "8m",
+            isFollowingBack = false,
+            isRead = false
+        ),
+        NotificationItem(
+            id = "notif_req_2",
+            user = sampleUsers[4],
+            type = NotificationType.FOLLOW_REQUEST,
+            text = "requested to follow you.",
+            timestamp = "26m",
+            isFollowingBack = false,
+            isRead = false
+        ),
+        NotificationItem(
             id = "notif_1",
             user = sampleUsers[0],
             type = NotificationType.LIKE,
@@ -519,6 +537,16 @@ object SampleData {
             postThumbnailUrl = "https://images.unsplash.com/photo-1513694203232-719a280e022f?w=150&auto=format&fit=crop&q=80",
             postId = "post_1",
             timestamp = "15m",
+            isRead = false
+        ),
+        NotificationItem(
+            id = "notif_story_1",
+            user = sampleUsers[1],
+            type = NotificationType.STORY_INTERACTION,
+            text = "reacted 🔥 to your story.",
+            postThumbnailUrl = "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=150&auto=format&fit=crop&q=80",
+            storyId = "story_me",
+            timestamp = "32m",
             isRead = false
         ),
         NotificationItem(
@@ -541,10 +569,20 @@ object SampleData {
             isRead = true
         ),
         NotificationItem(
+            id = "notif_story_2",
+            user = sampleUsers[0],
+            type = NotificationType.STORY_INTERACTION,
+            text = "replied to your story: \"Where was this sunrise taken?\"",
+            postThumbnailUrl = "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=150&auto=format&fit=crop&q=80",
+            storyId = "story_me",
+            timestamp = "4h",
+            isRead = true
+        ),
+        NotificationItem(
             id = "notif_4",
             user = sampleUsers[3],
             type = NotificationType.MENTION,
-            text = "mentioned you in a comment.",
+            text = "mentioned you in a comment: \"@alex.creates look at this oak texture!\"",
             postThumbnailUrl = "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=150&auto=format&fit=crop&q=80",
             postId = "post_4",
             timestamp = "6h",
@@ -558,6 +596,25 @@ object SampleData {
             postThumbnailUrl = "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=150&auto=format&fit=crop&q=80",
             postId = "post_5",
             timestamp = "1d",
+            isRead = true
+        ),
+        NotificationItem(
+            id = "notif_6",
+            user = sampleUsers[2],
+            type = NotificationType.MENTION,
+            text = "tagged you in a caption on an autumn editorial shoot.",
+            postThumbnailUrl = "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=150&auto=format&fit=crop&q=80",
+            postId = "post_3",
+            timestamp = "3d",
+            isRead = true
+        ),
+        NotificationItem(
+            id = "notif_7",
+            user = sampleUsers[0],
+            type = NotificationType.FOLLOW,
+            text = "started following you.",
+            timestamp = "1w",
+            isFollowingBack = true,
             isRead = true
         )
     )

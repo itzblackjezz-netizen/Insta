@@ -12,9 +12,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AlternateEmail
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.ChatBubble
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.PersonAddAlt1
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -35,7 +39,9 @@ import coil.compose.AsyncImage
 import com.example.model.NotificationItem
 import com.example.model.NotificationType
 import com.example.ui.theme.IgBlue
+import com.example.ui.theme.IgOrange
 import com.example.ui.theme.IgPink
+import com.example.ui.theme.IgPurple
 import com.example.ui.theme.IgRed
 import kotlinx.coroutines.delay
 
@@ -63,6 +69,15 @@ fun ActivityAlertBanner(
             .padding(horizontal = 14.dp, vertical = 10.dp)
     ) {
         notification?.let { item ->
+            val (badgeColor, badgeIcon, categoryLabel) = when (item.type) {
+                NotificationType.LIKE -> Triple(IgRed, Icons.Default.Favorite, "New Like")
+                NotificationType.COMMENT -> Triple(IgPurple, Icons.Default.ChatBubble, "New Comment")
+                NotificationType.FOLLOW -> Triple(IgBlue, Icons.Default.PersonAdd, "New Follower")
+                NotificationType.MENTION -> Triple(IgPink, Icons.Default.AlternateEmail, "New Mention")
+                NotificationType.STORY_INTERACTION -> Triple(IgOrange, Icons.Default.AutoAwesome, "Story Activity")
+                NotificationType.FOLLOW_REQUEST -> Triple(IgBlue, Icons.Default.PersonAddAlt1, "Follow Request")
+            }
+
             Surface(
                 shape = RoundedCornerShape(16.dp),
                 color = MaterialTheme.colorScheme.surface,
@@ -95,17 +110,16 @@ fun ActivityAlertBanner(
                                 .clip(CircleShape),
                             contentScale = ContentScale.Crop
                         )
-                        val isLike = item.type == NotificationType.LIKE
                         Box(
                             modifier = Modifier
                                 .size(18.dp)
                                 .clip(CircleShape)
-                                .background(if (isLike) IgRed else IgBlue)
+                                .background(badgeColor)
                                 .border(1.5.dp, MaterialTheme.colorScheme.surface, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = if (isLike) Icons.Default.Favorite else Icons.Default.PersonAdd,
+                                imageVector = badgeIcon,
                                 contentDescription = null,
                                 tint = Color.White,
                                 modifier = Modifier.size(10.dp)
@@ -117,9 +131,9 @@ fun ActivityAlertBanner(
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "New Activity",
+                            text = "$categoryLabel · ${item.timestamp}",
                             style = MaterialTheme.typography.labelSmall.copy(
-                                color = IgPink,
+                                color = badgeColor,
                                 fontWeight = FontWeight.Bold
                             )
                         )

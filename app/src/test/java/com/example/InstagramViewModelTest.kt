@@ -539,4 +539,48 @@ class InstagramViewModelTest {
         assertTrue(viewModel.showDirectMessages.value)
         assertEquals("dm_${newRecipient.id}", viewModel.activeChatId.value)
     }
+
+    @Test
+    fun testNotificationsCategoriesFollowRequestsAndStoryInteractions() {
+        val notifications = viewModel.notifications.value
+        val types = notifications.map { it.type }.toSet()
+
+        assertTrue(types.contains(com.example.model.NotificationType.LIKE))
+        assertTrue(types.contains(com.example.model.NotificationType.COMMENT))
+        assertTrue(types.contains(com.example.model.NotificationType.FOLLOW))
+        assertTrue(types.contains(com.example.model.NotificationType.MENTION))
+        assertTrue(types.contains(com.example.model.NotificationType.STORY_INTERACTION))
+        assertTrue(types.contains(com.example.model.NotificationType.FOLLOW_REQUEST))
+        assertTrue(notifications.all { it.timestamp.isNotBlank() })
+
+        // Confirming a follow request converts it into a FOLLOW notification
+        val requests = notifications.filter { it.type == com.example.model.NotificationType.FOLLOW_REQUEST }
+        assertTrue(requests.size >= 2)
+        val firstReq = requests[0]
+        val secondReq = requests[1]
+
+        viewModel.confirmFollowRequest(firstReq.id)
+        val afterConfirm = viewModel.notifications.value.first { it.id == firstReq.id }
+        assertEquals(com.example.model.NotificationType.FOLLOW, afterConfirm.type)
+        assertEquals("started following you.", afterConfirm.text)
+
+        // Deleting a follow request removes it
+        viewModel.deleteFollowRequest(secondReq.id)
+        assertFalse(viewModel.notifications.value.any { it.id == secondReq.id })
+
+        // Recording comment, mention, and story interaction notifications
+        val actor = com.example.data.SampleData.sampleUsers.first()
+        viewModel.recordStoryInteractionActivity(actor = actor, storyId = "story_me")
+        assertEquals(com.example.model.NotificationType.STORY_INTERACTION, viewModel.activeActivityAlert.value?.type)
+
+        viewModel.recordCommentActivity(actor = actor, commentText = "Awesome frame!", postId = "post_1")
+        assertEquals(com.example.model.NotificationType.COMMENT, viewModel.activeActivityAlert.value?.type)
+
+        viewModel.recordMentionActivity(actor = actor, postId = "post_1")
+        assertEquals(com.example.model.NotificationType.MENTION, viewModel.activeActivityAlert.value?.type)
+
+        // Opening story by id from notification opens StoryViewer
+        viewModel.openStoryById("story_me")
+        assertEquals("story_me", viewModel.activeStory.value?.id)
+    }
 }

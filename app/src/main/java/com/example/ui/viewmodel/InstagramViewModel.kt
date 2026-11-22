@@ -503,22 +503,154 @@ class InstagramViewModel(
         _activeActivityAlert.value = newItem
     }
 
+    fun confirmFollowRequest(notificationId: String) {
+        var confirmedUsername: String? = null
+        _notifications.update { list ->
+            list.map { item ->
+                if (item.id == notificationId && item.type == NotificationType.FOLLOW_REQUEST) {
+                    confirmedUsername = item.user.username
+                    item.copy(
+                        type = NotificationType.FOLLOW,
+                        text = "started following you.",
+                        timestamp = "Just now",
+                        isFollowingBack = _followedUsersOverride.value[item.user.id] ?: item.user.isFollowing,
+                        isRead = true
+                    )
+                } else {
+                    item
+                }
+            }
+        }
+        confirmedUsername?.let { username ->
+            _snackbarMessage.value = "Accepted @$username's follow request"
+        }
+    }
+
+    fun deleteFollowRequest(notificationId: String) {
+        var removedUsername: String? = null
+        _notifications.update { list ->
+            val target = list.firstOrNull { it.id == notificationId }
+            removedUsername = target?.user?.username
+            list.filterNot { it.id == notificationId }
+        }
+        removedUsername?.let { username ->
+            _snackbarMessage.value = "Removed @$username's follow request"
+        }
+    }
+
+    fun recordCommentActivity(
+        actor: User,
+        commentText: String,
+        postId: String? = null,
+        postThumbnailUrl: String? = null
+    ) {
+        val newItem = NotificationItem(
+            id = "notif_comment_${UUID.randomUUID()}",
+            user = actor,
+            type = NotificationType.COMMENT,
+            text = "commented: \"$commentText\"",
+            postThumbnailUrl = postThumbnailUrl,
+            postId = postId,
+            timestamp = "Just now",
+            isFollowingBack = _followedUsersOverride.value[actor.id] ?: actor.isFollowing,
+            isRead = false
+        )
+        _notifications.update { list -> listOf(newItem) + list }
+        _activeActivityAlert.value = newItem
+    }
+
+    fun recordMentionActivity(
+        actor: User,
+        postId: String? = null,
+        postThumbnailUrl: String? = null
+    ) {
+        val newItem = NotificationItem(
+            id = "notif_mention_${UUID.randomUUID()}",
+            user = actor,
+            type = NotificationType.MENTION,
+            text = "mentioned you in a comment.",
+            postThumbnailUrl = postThumbnailUrl,
+            postId = postId,
+            timestamp = "Just now",
+            isFollowingBack = _followedUsersOverride.value[actor.id] ?: actor.isFollowing,
+            isRead = false
+        )
+        _notifications.update { list -> listOf(newItem) + list }
+        _activeActivityAlert.value = newItem
+    }
+
+    fun recordStoryInteractionActivity(
+        actor: User,
+        storyId: String? = "story_me",
+        actionText: String = "reacted ❤️ to your story.",
+        storyThumbnailUrl: String? = null
+    ) {
+        val newItem = NotificationItem(
+            id = "notif_story_${UUID.randomUUID()}",
+            user = actor,
+            type = NotificationType.STORY_INTERACTION,
+            text = actionText,
+            postThumbnailUrl = storyThumbnailUrl ?: _stories.value.firstOrNull { it.id == storyId }?.mediaUrls?.firstOrNull(),
+            storyId = storyId,
+            timestamp = "Just now",
+            isFollowingBack = _followedUsersOverride.value[actor.id] ?: actor.isFollowing,
+            isRead = false
+        )
+        _notifications.update { list -> listOf(newItem) + list }
+        _activeActivityAlert.value = newItem
+    }
+
+    fun recordFollowRequestActivity(actor: User) {
+        val newItem = NotificationItem(
+            id = "notif_req_${UUID.randomUUID()}",
+            user = actor,
+            type = NotificationType.FOLLOW_REQUEST,
+            text = "requested to follow you.",
+            timestamp = "Just now",
+            isFollowingBack = false,
+            isRead = false
+        )
+        _notifications.update { list -> listOf(newItem) + list }
+        _activeActivityAlert.value = newItem
+    }
+
     fun simulateLocalActivity() {
         val creators = SampleData.sampleUsers
         if (creators.isEmpty()) return
         val actor = creators[activitySimulationCounter % creators.size]
-        val isLikeEvent = activitySimulationCounter % 2 == 0
+        val eventKind = activitySimulationCounter % 6
         activitySimulationCounter++
-        if (isLikeEvent) {
-            val targetPost = posts.value.firstOrNull()
-            recordPostLikeActivity(
+        val targetPost = posts.value.firstOrNull()
+        when (eventKind) {
+            0 -> recordPostLikeActivity(
                 actor = actor,
                 postId = targetPost?.id,
                 postThumbnailUrl = targetPost?.mediaUrls?.firstOrNull()
             )
-        } else {
-            recordFollowActivity(actor = actor)
+            1 -> recordFollowActivity(actor = actor)
+            2 -> recordStoryInteractionActivity(
+                actor = actor,
+                storyId = "story_me",
+                actionText = "liked your story."
+            )
+            3 -> recordCommentActivity(
+                actor = actor,
+                commentText = "Love the composition on this one! ✨",
+                postId = targetPost?.id,
+                postThumbnailUrl = targetPost?.mediaUrls?.firstOrNull()
+            )
+            4 -> recordMentionActivity(
+                actor = actor,
+                postId = targetPost?.id,
+                postThumbnailUrl = targetPost?.mediaUrls?.firstOrNull()
+            )
+            else -> recordFollowRequestActivity(actor = actor)
         }
+    }
+
+    fun openStoryById(storyId: String) {
+        val target = _stories.value.firstOrNull { it.id == storyId } ?: return
+        openStory(target)
     }
 
     fun setShowEditProfileDialog(show: Boolean) {
