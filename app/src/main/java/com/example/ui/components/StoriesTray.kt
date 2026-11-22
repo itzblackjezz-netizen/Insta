@@ -3,7 +3,6 @@ package com.example.ui.components
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -20,6 +19,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -28,8 +28,6 @@ import coil.compose.AsyncImage
 import com.example.model.Story
 import com.example.model.User
 import com.example.ui.theme.InstagramGradient
-import com.example.ui.theme.InstagramStorySeenRing
-import com.example.ui.theme.InstagramStorySeenRingDark
 
 @Composable
 fun StoriesTray(
@@ -39,28 +37,22 @@ fun StoriesTray(
     onAddStoryClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isDark = isSystemInDarkTheme()
-    val seenBorderColor = if (isDark) InstagramStorySeenRingDark else InstagramStorySeenRing
+    val seenBorderColor = MaterialTheme.colorScheme.outline
 
     LazyRow(
         modifier = modifier
             .fillMaxWidth()
             .testTag("stories_tray"),
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         items(stories, key = { it.id }) { story ->
+            val avatarUrl = if (story.isYourStory) currentUser.avatarUrl else story.userAvatar
             StoryItem(
                 story = story,
-                isDark = isDark,
+                avatarUrl = avatarUrl,
                 seenBorderColor = seenBorderColor,
-                onClick = {
-                    if (story.isYourStory) {
-                        onStoryClick(story)
-                    } else {
-                        onStoryClick(story)
-                    }
-                },
+                onClick = { onStoryClick(story) },
                 onAddStoryClick = onAddStoryClick
             )
         }
@@ -70,48 +62,49 @@ fun StoriesTray(
 @Composable
 private fun StoryItem(
     story: Story,
-    isDark: Boolean,
+    avatarUrl: String,
     seenBorderColor: Color,
     onClick: () -> Unit,
     onAddStoryClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
-            .width(74.dp)
+            .width(76.dp)
             .clickable(onClick = onClick)
             .testTag("story_item_${story.username}"),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(
-            modifier = Modifier.size(72.dp),
+            modifier = Modifier.size(74.dp),
             contentAlignment = Alignment.Center
         ) {
-            // Ring Border
-            val borderModifier = when {
-                story.isYourStory -> Modifier
+            val showGradientRing = story.hasUnseenStory || story.isYourStory
+            val ringModifier = when {
                 story.hasUnseenStory -> Modifier
                     .fillMaxSize()
                     .border(2.5.dp, InstagramGradient, CircleShape)
+                story.isYourStory -> Modifier
+                    .fillMaxSize()
+                    .border(1.5.dp, seenBorderColor, CircleShape)
                 else -> Modifier
                     .fillMaxSize()
                     .border(1.5.dp, seenBorderColor, CircleShape)
             }
 
             Box(
-                modifier = borderModifier,
+                modifier = ringModifier,
                 contentAlignment = Alignment.Center
             ) {
-                // Gap between border and avatar
                 Box(
                     modifier = Modifier
-                        .size(if (story.isYourStory) 68.dp else 64.dp)
+                        .size(if (showGradientRing) 66.dp else 66.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.background)
-                        .padding(if (story.isYourStory) 0.dp else 2.5.dp)
+                        .padding(3.dp)
                 ) {
                     AsyncImage(
-                        model = story.userAvatar,
-                        contentDescription = "${story.username} story",
+                        model = avatarUrl,
+                        contentDescription = if (story.isYourStory) "Your story" else "${story.username} story",
                         modifier = Modifier
                             .fillMaxSize()
                             .clip(CircleShape),
@@ -120,13 +113,12 @@ private fun StoryItem(
                 }
             }
 
-            // If "Your Story", show plus badge with gradient
             if (story.isYourStory) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .offset(x = (-2).dp, y = (-2).dp)
-                        .size(22.dp)
+                        .offset(x = (-1).dp, y = (-1).dp)
+                        .size(24.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.background)
                         .padding(2.dp)
@@ -146,13 +138,19 @@ private fun StoryItem(
             }
         }
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(5.dp))
 
-        // Username Label
         Text(
             text = if (story.isYourStory) "Your story" else story.username,
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp),
-            color = MaterialTheme.colorScheme.onBackground,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 11.5.sp,
+                fontWeight = if (story.hasUnseenStory) FontWeight.Medium else FontWeight.Normal
+            ),
+            color = if (story.hasUnseenStory || story.isYourStory) {
+                MaterialTheme.colorScheme.onBackground
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center

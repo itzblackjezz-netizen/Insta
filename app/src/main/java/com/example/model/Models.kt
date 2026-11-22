@@ -24,7 +24,9 @@ data class Story(
     val hasUnseenStory: Boolean = true,
     val mediaUrls: List<String> = emptyList(),
     val timestamp: String = "1h",
-    val caption: String = ""
+    val caption: String = "",
+    val isLiked: Boolean = false,
+    val lastReaction: String? = null
 )
 
 data class Comment(

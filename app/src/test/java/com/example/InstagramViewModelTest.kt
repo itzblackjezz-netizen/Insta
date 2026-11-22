@@ -314,8 +314,28 @@ class InstagramViewModelTest {
         viewModel.advanceStory()
         assertEquals(stories[1].id, viewModel.activeStory.value?.id)
 
+        viewModel.previousStory()
+        assertEquals(firstStory.id, viewModel.activeStory.value?.id)
+
         viewModel.closeStory()
         assertNull(viewModel.activeStory.value)
+    }
+
+    @Test
+    fun testStoryLikeReactionAndReply() {
+        val story = viewModel.stories.value[1]
+        viewModel.openStory(story)
+
+        viewModel.toggleLikeStory(story.id)
+        assertTrue(viewModel.activeStory.value?.isLiked == true)
+
+        viewModel.reactToStory(story, "🔥")
+        assertEquals("🔥", viewModel.activeStory.value?.lastReaction)
+
+        viewModel.replyToStory(story, "Love the lighting!")
+        val dm = viewModel.directMessages.value.firstOrNull { it.user.id == story.userId }
+        assertNotNull(dm)
+        assertEquals("Replied to story: Love the lighting!", dm?.lastMessage)
     }
 
     @Test

@@ -358,10 +358,13 @@ class InstagramViewModel(
     }
 
     fun openStory(story: Story) {
-        _activeStory.value = story
+        val resolvedStory = if (story.isYourStory) {
+            story.copy(userAvatar = currentUser.value.avatarUrl)
+        } else story
+        _activeStory.value = resolvedStory.copy(hasUnseenStory = false)
         _stories.update { list ->
             list.map {
-                if (it.id == story.id) it.copy(hasUnseenStory = false) else it
+                if (it.id == story.id) resolvedStory.copy(hasUnseenStory = false) else it
             }
         }
     }
@@ -387,6 +390,73 @@ class InstagramViewModel(
         val currentIndex = list.indexOfFirst { it.id == current.id }
         if (currentIndex > 0) {
             openStory(list[currentIndex - 1])
+        }
+    }
+
+    fun toggleLikeStory(storyId: String) {
+        _stories.update { list ->
+            list.map { story ->
+                if (story.id == storyId) story.copy(isLiked = !story.isLiked) else story
+            }
+        }
+        _activeStory.update { current ->
+            if (current?.id == storyId) current.copy(isLiked = !current.isLiked) else current
+        }
+    }
+
+    fun reactToStory(story: Story, emoji: String) {
+        _stories.update { list ->
+            list.map { item ->
+                if (item.id == story.id) item.copy(lastReaction = emoji) else item
+            }
+        }
+        _activeStory.update { current ->
+            if (current?.id == story.id) current.copy(lastReaction = emoji) else current
+        }
+        appendStoryDirectMessage(story, "Reacted $emoji to your story")
+    }
+
+    fun replyToStory(story: Story, message: String) {
+        val trimmed = message.trim()
+        if (trimmed.isEmpty()) return
+        appendStoryDirectMessage(story, "Replied to story: $trimmed")
+        _snackbarMessage.value = "Reply sent to @${story.username}"
+    }
+
+    fun shareStory(story: Story) {
+        _snackbarMessage.value = "Shared @${story.username}'s story"
+    }
+
+    private fun appendStoryDirectMessage(story: Story, messageText: String) {
+        if (story.isYourStory) return
+        val targetUser = SampleData.sampleUsers.firstOrNull { it.id == story.userId }
+            ?: User(
+                id = story.userId,
+                username = story.username,
+                fullName = story.username,
+                avatarUrl = story.userAvatar
+            )
+        _directMessages.update { list ->
+            val existingIndex = list.indexOfFirst { it.user.id == story.userId || it.user.username == story.username }
+            if (existingIndex >= 0) {
+                val updated = list[existingIndex].copy(
+                    lastMessage = messageText,
+                    timestamp = "Just now",
+                    unreadCount = 0
+                )
+                listOf(updated) + list.filterIndexed { index, _ -> index != existingIndex }
+            } else {
+                listOf(
+                    DirectMessage(
+                        id = "dm_story_${story.userId}",
+                        user = targetUser,
+                        lastMessage = messageText,
+                        timestamp = "Just now",
+                        unreadCount = 0,
+                        isOnline = true
+                    )
+                ) + list
+            }
         }
     }
 

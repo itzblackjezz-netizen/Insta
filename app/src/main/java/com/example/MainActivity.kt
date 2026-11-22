@@ -259,11 +259,18 @@ fun InstagramApp(
 
         // Dialog: Fullscreen Story Viewer
         activeStory?.let { story ->
+            val currentIndex = stories.indexOfFirst { it.id == story.id }
             StoryViewerDialog(
                 story = story,
+                hasPreviousStory = currentIndex > 0,
+                hasNextStory = currentIndex in 0 until (stories.size - 1),
                 onDismiss = { viewModel.closeStory() },
                 onAdvanceStory = { viewModel.advanceStory() },
-                onPreviousStory = { viewModel.previousStory() }
+                onPreviousStory = { viewModel.previousStory() },
+                onToggleLikeStory = { viewModel.toggleLikeStory(story.id) },
+                onSendReply = { message -> viewModel.replyToStory(story, message) },
+                onReactEmoji = { emoji -> viewModel.reactToStory(story, emoji) },
+                onShareStory = { viewModel.shareStory(story) }
             )
         }
 
