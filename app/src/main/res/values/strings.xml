@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">InstaSnap</string>
+    <!-- Set to "owner/repo" (e.g. "yourname/instasnap") to pre-configure automatic GitHub update checks -->
+    <string name="github_repo" translatable="false"></string>
 </resources>

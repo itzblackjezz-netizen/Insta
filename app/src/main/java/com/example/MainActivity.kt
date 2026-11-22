@@ -1,6 +1,11 @@
 package com.example
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -32,9 +37,14 @@ import com.example.ui.components.*
 import com.example.ui.screens.*
 import com.example.ui.theme.InstaSnapTheme
 import com.example.ui.viewmodel.InstagramViewModel
+import com.example.update.AppUpdateChecker
+import com.example.update.AppUpdatePreferences
+import com.example.update.GitHubReleaseInfo
+import com.example.update.UpdateCheckResult
 import com.google.firebase.Firebase
 import com.google.firebase.auth.auth
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -51,10 +61,47 @@ class MainActivity : ComponentActivity() {
             val scope = rememberCoroutineScope()
             val credentialManager = remember(context) { CredentialManager.create(context) }
 
+            val updatePrefs = remember(context) {
+                AppUpdatePreferences(context, context.getString(R.string.github_repo))
+            }
+            var configuredRepo by remember { mutableStateOf(updatePrefs.getConfiguredRepo()) }
+            var isCheckingUpdates by remember { mutableStateOf(false) }
+            var lastUpdateCheckResult by remember { mutableStateOf<UpdateCheckResult?>(null) }
+            var pendingUpdateRelease by remember { mutableStateOf<GitHubReleaseInfo?>(null) }
+            var showUpdatesSheet by remember { mutableStateOf(false) }
+
+            // Automatically check GitHub Releases for a newer APK when the app opens
+            LaunchedEffect(Unit) {
+                val repo = configuredRepo
+                if (repo.isNotBlank()) {
+                    isCheckingUpdates = true
+                    val result = AppUpdateChecker.checkForUpdates(
+                        repoSlug = repo,
+                        currentVersion = BuildConfig.VERSION_NAME
+                    )
+                    lastUpdateCheckResult = result
+                    isCheckingUpdates = false
+                    if (result is UpdateCheckResult.UpdateAvailable) {
+                        pendingUpdateRelease = result.release
+                    }
+                }
+            }
+
             val user = authUser
             if (user == null) {
                 InstaSnapTheme(darkTheme = isSystemInDarkTheme()) {
                     AuthScreen(onAuthSuccess = {})
+                    pendingUpdateRelease?.let { release ->
+                        UpdateAvailableDialog(
+                            currentVersion = BuildConfig.VERSION_NAME,
+                            release = release,
+                            onUpdateNow = {
+                                openReleaseInBrowser(context, release)
+                                pendingUpdateRelease = null
+                            },
+                            onDismiss = { pendingUpdateRelease = null }
+                        )
+                    }
                 }
             } else {
                 key(user.uid) {
@@ -86,8 +133,47 @@ class MainActivity : ComponentActivity() {
                                     credentialManager = credentialManager,
                                     scope = scope
                                 )
-                            }
+                            },
+                            onOpenUpdatesSettings = { showUpdatesSheet = true }
                         )
+
+                        pendingUpdateRelease?.let { release ->
+                            UpdateAvailableDialog(
+                                currentVersion = BuildConfig.VERSION_NAME,
+                                release = release,
+                                onUpdateNow = {
+                                    openReleaseInBrowser(context, release)
+                                    pendingUpdateRelease = null
+                                },
+                                onDismiss = { pendingUpdateRelease = null }
+                            )
+                        }
+
+                        if (showUpdatesSheet) {
+                            AppUpdatesSettingsSheet(
+                                currentVersion = BuildConfig.VERSION_NAME,
+                                configuredRepo = configuredRepo,
+                                isChecking = isCheckingUpdates,
+                                lastCheckResult = lastUpdateCheckResult,
+                                onSaveAndCheck = { newRepo ->
+                                    updatePrefs.setConfiguredRepo(newRepo)
+                                    configuredRepo = newRepo
+                                    scope.launch {
+                                        isCheckingUpdates = true
+                                        val result = AppUpdateChecker.checkForUpdates(
+                                            repoSlug = newRepo,
+                                            currentVersion = BuildConfig.VERSION_NAME
+                                        )
+                                        lastUpdateCheckResult = result
+                                        isCheckingUpdates = false
+                                    }
+                                },
+                                onOpenRelease = { release ->
+                                    openReleaseInBrowser(context, release)
+                                },
+                                onDismiss = { showUpdatesSheet = false }
+                            )
+                        }
                     }
                 }
             }
@@ -95,10 +181,23 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+private fun openReleaseInBrowser(context: Context, release: GitHubReleaseInfo) {
+    val targetUrl = release.apkDownloadUrl ?: release.htmlUrl
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    try {
+        context.startActivity(intent)
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(context, "No browser found to open update link.", Toast.LENGTH_SHORT).show()
+    }
+}
+
 @Composable
 fun InstagramApp(
     viewModel: InstagramViewModel,
     onSignOutClick: () -> Unit,
+    onOpenUpdatesSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val posts by viewModel.posts.collectAsStateWithLifecycle()
@@ -177,7 +276,8 @@ fun InstagramApp(
                         currentUser = currentUser,
                         isLoadingMore = isLoadingMore,
                         aiCaptionState = aiCaptionState,
-                        onSignOutClick = onSignOutClick
+                        onSignOutClick = onSignOutClick,
+                        onOpenUpdatesSettings = onOpenUpdatesSettings
                     )
                 }
             }
@@ -227,7 +327,8 @@ fun InstagramApp(
                         currentUser = currentUser,
                         isLoadingMore = isLoadingMore,
                         aiCaptionState = aiCaptionState,
-                        onSignOutClick = onSignOutClick
+                        onSignOutClick = onSignOutClick,
+                        onOpenUpdatesSettings = onOpenUpdatesSettings
                     )
                 }
             }
@@ -336,7 +437,8 @@ private fun ScreenContent(
     currentUser: com.example.model.User,
     isLoadingMore: Boolean,
     aiCaptionState: com.example.ui.viewmodel.AiCaptionUiState,
-    onSignOutClick: () -> Unit
+    onSignOutClick: () -> Unit,
+    onOpenUpdatesSettings: () -> Unit
 ) {
     when (currentTab) {
         NavigationTab.HOME -> {
@@ -388,6 +490,7 @@ private fun ScreenContent(
                 highlights = com.example.data.SampleData.sampleHighlights,
                 onEditProfileClick = { viewModel.setShowEditProfileDialog(true) },
                 onSignOutClick = onSignOutClick,
+                onMenuClick = onOpenUpdatesSettings,
                 onPostClick = { post -> viewModel.openComments(post) }
             )
         }

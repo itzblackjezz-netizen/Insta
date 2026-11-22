@@ -55,6 +55,7 @@ fun ProfileScreen(
     highlights: List<StoryHighlight>,
     onEditProfileClick: () -> Unit,
     onSignOutClick: () -> Unit,
+    onMenuClick: () -> Unit,
     onPostClick: (Post) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -107,10 +108,15 @@ fun ProfileScreen(
                         tint = MaterialTheme.colorScheme.onBackground
                     )
                 }
-                IconButton(onClick = { /* Menu */ }, modifier = Modifier.size(36.dp)) {
+                IconButton(
+                    onClick = onMenuClick,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("profile_menu_button")
+                ) {
                     Icon(
                         imageVector = Icons.Default.Menu,
-                        contentDescription = "Menu",
+                        contentDescription = "App Updates & Settings",
                         tint = MaterialTheme.colorScheme.onBackground
                     )
                 }
