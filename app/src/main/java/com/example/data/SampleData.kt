@@ -27,7 +27,12 @@ object SampleData {
             avatarUrl = "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=300&auto=format&fit=crop&q=80",
             isVerified = true,
             isFollowing = true,
-            bio = "Minimalist Architecture & Light Studies 🏛️"
+            bio = "Minimalist Architecture & Light Studies 🏛️\nCapturing concrete geometry across Europe.",
+            link = "elenavance.studio",
+            postsCount = 128,
+            followersCount = "64.2K",
+            followingCount = "312",
+            mutualFollowersSummary = "Followed by marco_lens and 18 others"
         ),
         User(
             id = "user_2",
@@ -36,7 +41,12 @@ object SampleData {
             avatarUrl = "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80",
             isVerified = true,
             isFollowing = true,
-            bio = "Tokyo Nights & Street Photography 🏮"
+            bio = "Tokyo Nights & Street Photography 🏮\n35mm stories after midnight.",
+            link = "marcorossi.photo",
+            postsCount = 214,
+            followersCount = "112K",
+            followingCount = "419",
+            mutualFollowersSummary = "Followed by elena_v, maya_style, and 31 others"
         ),
         User(
             id = "user_3",
@@ -45,7 +55,12 @@ object SampleData {
             avatarUrl = "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=300&auto=format&fit=crop&q=80",
             isVerified = false,
             isFollowing = true,
-            bio = "Sustainable Fashion & Editorial Styling ✨"
+            bio = "Sustainable Fashion & Editorial Styling ✨\nNYC • Creative Direction",
+            link = "mayachen.co",
+            postsCount = 96,
+            followersCount = "29.8K",
+            followingCount = "540",
+            mutualFollowersSummary = "Followed by elena_v and 9 others"
         ),
         User(
             id = "user_4",
@@ -54,7 +69,12 @@ object SampleData {
             avatarUrl = "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=300&auto=format&fit=crop&q=80",
             isVerified = true,
             isFollowing = false,
-            bio = "Scandinavian Interiors & Warm Minimalist Living ☕"
+            bio = "Scandinavian Interiors & Warm Minimalist Living ☕\nCopenhagen • Architecture & Oak",
+            link = "nordicspaces.dk",
+            postsCount = 84,
+            followersCount = "45.1K",
+            followingCount = "220",
+            mutualFollowersSummary = "Followed by elena_v"
         ),
         User(
             id = "user_5",
@@ -63,7 +83,12 @@ object SampleData {
             avatarUrl = "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=300&auto=format&fit=crop&q=80",
             isVerified = true,
             isFollowing = false,
-            bio = "Pastry & Artisanal Coffee in Paris 🥐"
+            bio = "Pastry & Artisanal Coffee in Paris 🥐\nSourdough, croissants & slow mornings.",
+            link = "maisonclara.fr",
+            postsCount = 152,
+            followersCount = "73.6K",
+            followingCount = "198",
+            mutualFollowersSummary = "Followed by marco_lens and 12 others"
         )
     )
 

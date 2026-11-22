@@ -204,6 +204,7 @@ fun InstagramApp(
     val stories by viewModel.stories.collectAsStateWithLifecycle()
     val reels by viewModel.reels.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+    val viewedProfileUser by viewModel.viewedProfileUser.collectAsStateWithLifecycle()
     val currentTab by viewModel.currentTab.collectAsStateWithLifecycle()
     val isDarkMode by viewModel.isDarkMode.collectAsStateWithLifecycle()
     val activeStory by viewModel.activeStory.collectAsStateWithLifecycle()
@@ -288,10 +289,13 @@ fun InstagramApp(
                         stories = stories,
                         reels = reels,
                         currentUser = currentUser,
+                        viewedProfileUser = viewedProfileUser,
                         isRefreshingFeed = isRefreshingFeed,
                         isLoadingMore = isLoadingMore,
                         followedUsers = followedUsers,
                         isReelMuted = isReelMuted,
+                        isDarkMode = isDarkMode,
+                        unreadNotificationsCount = unreadNotificationsCount,
                         aiCaptionState = aiCaptionState,
                         onSignOutClick = onSignOutClick,
                         onOpenUpdatesSettings = onOpenUpdatesSettings
@@ -344,10 +348,13 @@ fun InstagramApp(
                         stories = stories,
                         reels = reels,
                         currentUser = currentUser,
+                        viewedProfileUser = viewedProfileUser,
                         isRefreshingFeed = isRefreshingFeed,
                         isLoadingMore = isLoadingMore,
                         followedUsers = followedUsers,
                         isReelMuted = isReelMuted,
+                        isDarkMode = isDarkMode,
+                        unreadNotificationsCount = unreadNotificationsCount,
                         aiCaptionState = aiCaptionState,
                         onSignOutClick = onSignOutClick,
                         onOpenUpdatesSettings = onOpenUpdatesSettings
@@ -485,10 +492,13 @@ private fun ScreenContent(
     stories: List<com.example.model.Story>,
     reels: List<com.example.model.Reel>,
     currentUser: com.example.model.User,
+    viewedProfileUser: com.example.model.User?,
     isRefreshingFeed: Boolean,
     isLoadingMore: Boolean,
     followedUsers: Map<String, Boolean>,
     isReelMuted: Boolean,
+    isDarkMode: Boolean,
+    unreadNotificationsCount: Int,
     aiCaptionState: com.example.ui.viewmodel.AiCaptionUiState,
     onSignOutClick: () -> Unit,
     onOpenUpdatesSettings: () -> Unit
@@ -511,7 +521,7 @@ private fun ScreenContent(
                 onSaveClick = { postId -> viewModel.toggleSavePost(postId) },
                 onOptionsClick = { post -> viewModel.openOptions(post) },
                 onAiInsightsClick = { post -> viewModel.openAiCompanion(post) },
-                onUserClick = { viewModel.selectTab(NavigationTab.PROFILE) },
+                onUserClick = { user -> viewModel.openUserProfile(user) },
                 onAddQuickComment = { postId, text -> viewModel.addComment(postId, text) },
                 onLoadMore = { viewModel.loadMorePosts() }
             )
@@ -560,14 +570,33 @@ private fun ScreenContent(
             )
         }
         NavigationTab.PROFILE -> {
+            val activeProfileUser = viewedProfileUser ?: currentUser
+            val isOwnProfile = viewedProfileUser == null || activeProfileUser.id == currentUser.id
+            val isFollowingProfile = followedUsers[activeProfileUser.id] ?: activeProfileUser.isFollowing
             ProfileScreen(
-                user = currentUser,
+                user = activeProfileUser,
+                isOwnProfile = isOwnProfile,
+                isFollowingUser = isFollowingProfile,
+                followedUsers = followedUsers,
                 posts = posts,
+                reels = reels,
                 highlights = com.example.data.SampleData.sampleHighlights,
+                isDarkMode = isDarkMode,
+                unreadNotificationsCount = unreadNotificationsCount,
+                onToggleDarkMode = { viewModel.toggleDarkMode() },
+                onBackFromCreator = { viewModel.closeViewedUserProfile() },
+                onToggleFollow = { viewModel.toggleFollowUser(activeProfileUser.id) },
+                onToggleFollowOther = { userId -> viewModel.toggleFollowUser(userId) },
+                onMessageClick = { viewModel.messageUser(activeProfileUser) },
                 onEditProfileClick = { viewModel.setShowEditProfileDialog(true) },
+                onShareProfileClick = { viewModel.shareProfile(activeProfileUser) },
+                onSelectCreator = { creator -> viewModel.openUserProfile(creator) },
+                onCreatePostClick = { viewModel.selectTab(NavigationTab.CREATE) },
+                onOpenActivity = { viewModel.setShowNotifications(true) },
                 onSignOutClick = onSignOutClick,
                 onMenuClick = onOpenUpdatesSettings,
-                onPostClick = { post -> viewModel.openComments(post) }
+                onPostClick = { post -> viewModel.openComments(post) },
+                onReelClick = { viewModel.selectTab(NavigationTab.REELS) }
             )
         }
     }

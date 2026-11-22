@@ -232,6 +232,9 @@ class InstagramViewModel(
     private val _currentTab = MutableStateFlow(NavigationTab.HOME)
     val currentTab: StateFlow<NavigationTab> = _currentTab.asStateFlow()
 
+    private val _viewedProfileUser = MutableStateFlow<User?>(null)
+    val viewedProfileUser: StateFlow<User?> = _viewedProfileUser.asStateFlow()
+
     private val _isDarkMode = MutableStateFlow(false)
     val isDarkMode: StateFlow<Boolean> = _isDarkMode.asStateFlow()
 
@@ -353,7 +356,49 @@ class InstagramViewModel(
     }
 
     fun selectTab(tab: NavigationTab) {
+        if (tab == NavigationTab.PROFILE) {
+            _viewedProfileUser.value = null
+        }
         _currentTab.value = tab
+    }
+
+    fun openUserProfile(user: User) {
+        _viewedProfileUser.value = if (user.id == currentUser.value.id || user.username == currentUser.value.username) {
+            null
+        } else {
+            user
+        }
+        _currentTab.value = NavigationTab.PROFILE
+    }
+
+    fun closeViewedUserProfile() {
+        _viewedProfileUser.value = null
+    }
+
+    fun messageUser(user: User) {
+        _directMessages.update { list ->
+            val existing = list.indexOfFirst { it.user.id == user.id || it.user.username == user.username }
+            if (existing >= 0) {
+                val thread = list[existing]
+                listOf(thread) + list.filterIndexed { i, _ -> i != existing }
+            } else {
+                listOf(
+                    DirectMessage(
+                        id = "dm_${user.id}",
+                        user = user,
+                        lastMessage = "Say hi to @${user.username} 👋",
+                        timestamp = "Now",
+                        unreadCount = 0,
+                        isOnline = true
+                    )
+                ) + list
+            }
+        }
+        _showDirectMessages.value = true
+    }
+
+    fun shareProfile(user: User) {
+        _snackbarMessage.value = "Profile link copied for @${user.username}"
     }
 
     fun setShowDirectMessages(show: Boolean) {

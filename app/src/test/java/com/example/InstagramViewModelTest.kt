@@ -446,4 +446,28 @@ class InstagramViewModelTest {
         assertEquals(0, viewModel.unreadNotificationsCount.value)
         assertNull(viewModel.activeActivityAlert.value)
     }
+
+    @Test
+    fun testProfileViewingMessageAndShare() {
+        val creator = com.example.data.SampleData.sampleUsers.first()
+
+        viewModel.openUserProfile(creator)
+        assertEquals(NavigationTab.PROFILE, viewModel.currentTab.value)
+        assertEquals(creator.id, viewModel.viewedProfileUser.value?.id)
+
+        viewModel.messageUser(creator)
+        assertTrue(viewModel.showDirectMessages.value)
+        assertEquals(creator.id, viewModel.directMessages.value.first().user.id)
+
+        viewModel.shareProfile(creator)
+        assertEquals("Profile link copied for @${creator.username}", viewModel.snackbarMessage.value)
+
+        viewModel.closeViewedUserProfile()
+        assertNull(viewModel.viewedProfileUser.value)
+
+        // Selecting Profile tab directly resets to account owner
+        viewModel.openUserProfile(creator)
+        viewModel.selectTab(NavigationTab.PROFILE)
+        assertNull(viewModel.viewedProfileUser.value)
+    }
 }
