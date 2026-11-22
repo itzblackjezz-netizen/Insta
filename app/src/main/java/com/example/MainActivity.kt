@@ -7,30 +7,89 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.credentials.CredentialManager
+import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.example.firebase.GeminiAiService
+import com.example.firebase.InstagramRepository
+import com.example.firebase.configureAppCheck
 import com.example.model.NavigationTab
+import com.example.ui.auth.AuthScreen
+import com.example.ui.auth.authStateFlow
+import com.example.ui.auth.signOut
 import com.example.ui.components.*
 import com.example.ui.screens.*
 import com.example.ui.theme.InstaSnapTheme
 import com.example.ui.viewmodel.InstagramViewModel
+import com.google.firebase.Firebase
+import com.google.firebase.auth.auth
+import com.google.firebase.firestore.FirebaseFirestore
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Must initialize App Check before any Firebase AI or Firestore calls
+        configureAppCheck(this, intent)
         enableEdgeToEdge()
         setContent {
-            val viewModel: InstagramViewModel = viewModel()
-            val isDarkMode by viewModel.isDarkMode.collectAsStateWithLifecycle()
+            val authUser by remember {
+                Firebase.auth.authStateFlow()
+            }.collectAsStateWithLifecycle(initialValue = Firebase.auth.currentUser)
 
-            InstaSnapTheme(darkTheme = isDarkMode) {
-                InstagramApp(viewModel = viewModel)
+            val context = LocalContext.current
+            val scope = rememberCoroutineScope()
+            val credentialManager = remember(context) { CredentialManager.create(context) }
+
+            val user = authUser
+            if (user == null) {
+                InstaSnapTheme(darkTheme = isSystemInDarkTheme()) {
+                    AuthScreen(onAuthSuccess = {})
+                }
+            } else {
+                key(user.uid) {
+                    val viewModel: InstagramViewModel = viewModel(
+                        key = user.uid,
+                        factory = viewModelFactory {
+                            initializer {
+                                val app = checkNotNull(this[APPLICATION_KEY])
+                                val db = FirebaseFirestore.getInstance(
+                                    app.getString(R.string.firestore_database_id)
+                                )
+                                InstagramViewModel(
+                                    repository = InstagramRepository(db),
+                                    aiService = GeminiAiService(),
+                                    currentUserId = user.uid,
+                                    initialDisplayName = user.displayName,
+                                    initialPhotoUrl = user.photoUrl?.toString()
+                                )
+                            }
+                        }
+                    )
+                    val isDarkMode by viewModel.isDarkMode.collectAsStateWithLifecycle()
+
+                    InstaSnapTheme(darkTheme = isDarkMode) {
+                        InstagramApp(
+                            viewModel = viewModel,
+                            onSignOutClick = {
+                                signOut(
+                                    credentialManager = credentialManager,
+                                    scope = scope
+                                )
+                            }
+                        )
+                    }
+                }
             }
         }
     }
@@ -39,6 +98,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun InstagramApp(
     viewModel: InstagramViewModel,
+    onSignOutClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val posts by viewModel.posts.collectAsStateWithLifecycle()
@@ -51,8 +111,12 @@ fun InstagramApp(
     val activeCommentsPost by viewModel.activeCommentsPost.collectAsStateWithLifecycle()
     val activeSharePost by viewModel.activeSharePost.collectAsStateWithLifecycle()
     val activeOptionsPost by viewModel.activeOptionsPost.collectAsStateWithLifecycle()
+    val activeAiCompanionPost by viewModel.activeAiCompanionPost.collectAsStateWithLifecycle()
+    val aiCaptionState by viewModel.aiCaptionState.collectAsStateWithLifecycle()
+    val aiCompanionState by viewModel.aiCompanionState.collectAsStateWithLifecycle()
     val showDirectMessages by viewModel.showDirectMessages.collectAsStateWithLifecycle()
     val showNotifications by viewModel.showNotifications.collectAsStateWithLifecycle()
+    val showEditProfileDialog by viewModel.showEditProfileDialog.collectAsStateWithLifecycle()
     val notifications by viewModel.notifications.collectAsStateWithLifecycle()
     val directMessages by viewModel.directMessages.collectAsStateWithLifecycle()
     val isLoadingMore by viewModel.isLoadingMorePosts.collectAsStateWithLifecycle()
@@ -112,7 +176,8 @@ fun InstagramApp(
                         reels = reels,
                         currentUser = currentUser,
                         isLoadingMore = isLoadingMore,
-                        isDarkMode = isDarkMode
+                        aiCaptionState = aiCaptionState,
+                        onSignOutClick = onSignOutClick
                     )
                 }
             }
@@ -131,7 +196,7 @@ fun InstagramApp(
                     }
                 },
                 bottomBar = {
-                    // Hide bottom bar in Reels mode or when creating post for maximum immersion
+                    // Hide bottom bar when creating post or in overlays for maximum immersion
                     if (currentTab != NavigationTab.CREATE && !showDirectMessages && !showNotifications) {
                         InstagramBottomNavBar(
                             selectedTab = currentTab,
@@ -161,7 +226,8 @@ fun InstagramApp(
                         reels = reels,
                         currentUser = currentUser,
                         isLoadingMore = isLoadingMore,
-                        isDarkMode = isDarkMode
+                        aiCaptionState = aiCaptionState,
+                        onSignOutClick = onSignOutClick
                     )
                 }
             }
@@ -229,6 +295,27 @@ fun InstagramApp(
                 onUnfollow = { viewModel.toggleFollowUser(post.user.id) }
             )
         }
+
+        // Modal Bottom Sheet: Gemini AI Post Companion
+        activeAiCompanionPost?.let { post ->
+            AiPostCompanionSheet(
+                post = post,
+                uiState = aiCompanionState,
+                onRetry = { viewModel.retryAiCompanion() },
+                onDismiss = { viewModel.closeAiCompanion() }
+            )
+        }
+
+        // Dialog: Edit Profile (Persisted to Firestore)
+        if (showEditProfileDialog) {
+            EditProfileDialog(
+                user = currentUser,
+                onDismiss = { viewModel.setShowEditProfileDialog(false) },
+                onSave = { username, fullName, bio, link ->
+                    viewModel.updateProfile(username, fullName, bio, link)
+                }
+            )
+        }
     }
 }
 
@@ -241,7 +328,8 @@ private fun ScreenContent(
     reels: List<com.example.model.Reel>,
     currentUser: com.example.model.User,
     isLoadingMore: Boolean,
-    isDarkMode: Boolean
+    aiCaptionState: com.example.ui.viewmodel.AiCaptionUiState,
+    onSignOutClick: () -> Unit
 ) {
     when (currentTab) {
         NavigationTab.HOME -> {
@@ -258,6 +346,7 @@ private fun ScreenContent(
                 onShareClick = { post -> viewModel.openShare(post) },
                 onSaveClick = { postId -> viewModel.toggleSavePost(postId) },
                 onOptionsClick = { post -> viewModel.openOptions(post) },
+                onAiInsightsClick = { post -> viewModel.openAiCompanion(post) },
                 onUserClick = { viewModel.selectTab(NavigationTab.PROFILE) },
                 onAddQuickComment = { postId, text -> viewModel.addComment(postId, text) },
                 onLoadMore = { viewModel.loadMorePosts() }
@@ -268,6 +357,10 @@ private fun ScreenContent(
         }
         NavigationTab.CREATE -> {
             CreatePostScreen(
+                aiCaptionState = aiCaptionState,
+                onGenerateAiCaptions = { topicOrVibe, location, filterName ->
+                    viewModel.generateAiCaptions(topicOrVibe, location, filterName)
+                },
                 onSharePost = { caption, imageUrl, location ->
                     viewModel.createPost(caption, imageUrl, location)
                 },
@@ -286,7 +379,8 @@ private fun ScreenContent(
                 user = currentUser,
                 posts = posts,
                 highlights = com.example.data.SampleData.sampleHighlights,
-                onEditProfileClick = { /* Edit profile */ },
+                onEditProfileClick = { viewModel.setShowEditProfileDialog(true) },
+                onSignOutClick = onSignOutClick,
                 onPostClick = { post -> viewModel.openComments(post) }
             )
         }

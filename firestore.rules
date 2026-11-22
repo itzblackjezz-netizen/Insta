@@ -1,0 +1,184 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net: deny everything by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidTimestamp(ts) {
+      return ts is timestamp && ts <= request.time;
+    }
+
+    // --- Schema Validation Helpers ---
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId == request.auth.uid &&
+             data.username is string && data.username.size() >= 2 && data.username.size() <= 30 &&
+             data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 60 &&
+             (!('bio' in data) || (data.bio is string && data.bio.size() <= 250)) &&
+             (!('link' in data) || (data.link is string && data.link.size() <= 120)) &&
+             data.avatarUrl is string && data.avatarUrl.size() <= 500 &&
+             data.verified is bool &&
+             data.postsCount is int && data.postsCount >= 0 &&
+             data.followersCount is string && data.followersCount.size() >= 1 && data.followersCount.size() <= 20 &&
+             data.followingCount is string && data.followingCount.size() >= 1 && data.followingCount.size() <= 20 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidUserPost(data) {
+      return data.userId is string && data.userId == request.auth.uid &&
+             data.authorUsername is string && data.authorUsername.size() >= 1 && data.authorUsername.size() <= 30 &&
+             data.authorAvatarUrl is string && data.authorAvatarUrl.size() <= 500 &&
+             (!('location' in data) || (data.location is string && data.location.size() <= 100)) &&
+             data.caption is string && data.caption.size() <= 2200 &&
+             data.imageUrl is string && data.imageUrl.size() >= 1 && data.imageUrl.size() <= 500 &&
+             data.hashtags is list && data.hashtags.size() <= 20 &&
+             (data.hashtags.size() == 0 || data.hashtags[0] is string) &&
+             data.likesCount is int && data.likesCount >= 0 &&
+             data.liked is bool &&
+             data.saved is bool &&
+             data.commentsCount is int && data.commentsCount >= 0 &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidPostState(data) {
+      return data.userId is string && data.userId == request.auth.uid &&
+             data.postId is string && data.postId.size() >= 1 && data.postId.size() <= 128 &&
+             data.liked is bool &&
+             data.saved is bool &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    function isValidUserComment(data) {
+      return data.userId is string && data.userId == request.auth.uid &&
+             data.postId is string && data.postId.size() >= 1 && data.postId.size() <= 128 &&
+             data.authorUsername is string && data.authorUsername.size() >= 1 && data.authorUsername.size() <= 30 &&
+             data.authorAvatarUrl is string && data.authorAvatarUrl.size() <= 500 &&
+             data.text is string && data.text.size() >= 1 && data.text.size() <= 500 &&
+             data.likesCount is int && data.likesCount >= 0 &&
+             data.liked is bool &&
+             isValidTimestamp(data.createdAt) &&
+             isValidTimestamp(data.updatedAt);
+    }
+
+    // --- Collection Rules ---
+    match /users/{userId} {
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if isOwner(userId);
+
+      allow create: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       incoming().keys().hasAll(['userId', 'username', 'fullName', 'avatarUrl', 'verified', 'postsCount', 'followersCount', 'followingCount', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'username', 'fullName', 'bio', 'link', 'avatarUrl', 'verified', 'postsCount', 'followersCount', 'followingCount', 'createdAt', 'updatedAt']) &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         incoming().diff(existing()).affectedKeys().hasOnly(['username', 'fullName', 'bio', 'link', 'avatarUrl', 'updatedAt']) ||
+                         incoming().diff(existing()).affectedKeys().hasOnly(['postsCount', 'updatedAt'])
+                       );
+
+      allow delete: if isOwner(userId) && isValidId(userId);
+
+      // User's authored posts
+      match /posts/{postId} {
+        allow get: if isOwner(userId) && isValidId(postId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(postId) &&
+                         incoming().keys().hasAll(['userId', 'authorUsername', 'authorAvatarUrl', 'caption', 'imageUrl', 'hashtags', 'likesCount', 'liked', 'saved', 'commentsCount', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'authorUsername', 'authorAvatarUrl', 'location', 'caption', 'imageUrl', 'hashtags', 'likesCount', 'liked', 'saved', 'commentsCount', 'createdAt', 'updatedAt']) &&
+                         isValidUserPost(incoming());
+
+        allow update: if isOwner(userId) &&
+                         isValidId(postId) &&
+                         isValidUserPost(incoming()) &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         (
+                           incoming().diff(existing()).affectedKeys().hasOnly(['liked', 'likesCount', 'updatedAt']) ||
+                           incoming().diff(existing()).affectedKeys().hasOnly(['saved', 'updatedAt']) ||
+                           incoming().diff(existing()).affectedKeys().hasOnly(['commentsCount', 'updatedAt']) ||
+                           incoming().diff(existing()).affectedKeys().hasOnly(['caption', 'location', 'hashtags', 'updatedAt'])
+                         );
+
+        allow delete: if isOwner(userId) && isValidId(postId);
+      }
+
+      // User's persisted interaction states (like / save) on feed posts
+      match /post_states/{postId} {
+        allow get: if isOwner(userId) && isValidId(postId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(postId) &&
+                         incoming().keys().hasAll(['userId', 'postId', 'liked', 'saved', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'postId', 'liked', 'saved', 'createdAt', 'updatedAt']) &&
+                         isValidPostState(incoming());
+
+        allow update: if isOwner(userId) &&
+                         isValidId(postId) &&
+                         isValidPostState(incoming()) &&
+                         incoming().userId == existing().userId &&
+                         incoming().postId == existing().postId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['liked', 'saved', 'updatedAt']);
+
+        allow delete: if isOwner(userId) && isValidId(postId);
+      }
+
+      // User's persisted comments
+      match /comments/{commentId} {
+        allow get: if isOwner(userId) && isValidId(commentId);
+        allow list: if isOwner(userId);
+
+        allow create: if isOwner(userId) &&
+                         isValidId(commentId) &&
+                         incoming().keys().hasAll(['userId', 'postId', 'authorUsername', 'authorAvatarUrl', 'text', 'likesCount', 'liked', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['userId', 'postId', 'authorUsername', 'authorAvatarUrl', 'text', 'likesCount', 'liked', 'createdAt', 'updatedAt']) &&
+                         isValidUserComment(incoming());
+
+        allow update: if isOwner(userId) &&
+                         isValidId(commentId) &&
+                         isValidUserComment(incoming()) &&
+                         incoming().userId == existing().userId &&
+                         incoming().postId == existing().postId &&
+                         incoming().createdAt == existing().createdAt &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['liked', 'likesCount', 'updatedAt']);
+
+        allow delete: if isOwner(userId) && isValidId(commentId);
+      }
+    }
+  }
+}

@@ -7,11 +7,11 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
@@ -29,6 +29,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.SampleData
 import com.example.ui.theme.IgBlue
+import com.example.ui.theme.IgPink
+import com.example.ui.viewmodel.AiCaptionUiState
 
 data class PhotoFilter(
     val name: String,
@@ -37,6 +39,8 @@ data class PhotoFilter(
 
 @Composable
 fun CreatePostScreen(
+    aiCaptionState: AiCaptionUiState,
+    onGenerateAiCaptions: (topicOrVibe: String, location: String?, filterName: String) -> Unit,
     onSharePost: (caption: String, imageUrl: String, location: String?) -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier
@@ -45,6 +49,7 @@ fun CreatePostScreen(
     var selectedImageIndex by remember { mutableIntStateOf(0) }
     var captionText by remember { mutableStateOf("") }
     var locationText by remember { mutableStateOf("San Francisco, CA") }
+    var aiTopicText by remember { mutableStateOf("") }
 
     val filters = remember {
         listOf(
@@ -134,7 +139,6 @@ fun CreatePostScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
-                // Filter tint overlay
                 if (selectedFilter.overlayColor != Color.Transparent) {
                     Box(
                         modifier = Modifier
@@ -241,6 +245,141 @@ fun CreatePostScreen(
             Spacer(modifier = Modifier.height(14.dp))
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), thickness = 0.5.dp)
 
+            // Gemini AI Caption Studio Card
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 12.dp)
+                    .testTag("ai_caption_studio_card")
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.AutoAwesome,
+                            contentDescription = null,
+                            tint = IgPink,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "AI Caption Studio (Gemini)",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = aiTopicText,
+                            onValueChange = { aiTopicText = it },
+                            placeholder = { Text("Describe the photo vibe or mood...", fontSize = 13.sp) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("ai_caption_topic_input"),
+                            shape = RoundedCornerShape(10.dp),
+                            singleLine = true
+                        )
+
+                        Button(
+                            onClick = {
+                                onGenerateAiCaptions(
+                                    aiTopicText.ifBlank { captionText },
+                                    locationText,
+                                    selectedFilter.name
+                                )
+                            },
+                            enabled = aiCaptionState !is AiCaptionUiState.Loading,
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = IgBlue,
+                                contentColor = Color.White
+                            ),
+                            modifier = Modifier.testTag("generate_ai_captions_button")
+                        ) {
+                            if (aiCaptionState is AiCaptionUiState.Loading) {
+                                CircularProgressIndicator(
+                                    color = Color.White,
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Text("Generate", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    when (aiCaptionState) {
+                        is AiCaptionUiState.Success -> {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = "Tap a suggestion to use it:",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            aiCaptionState.result.captions.forEach { option ->
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surface,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 3.dp)
+                                        .clickable {
+                                            val tags = aiCaptionState.result.hashtags.take(4).joinToString(" ")
+                                            captionText = "$option\n\n$tags".trim()
+                                        }
+                                ) {
+                                    Text(
+                                        text = option,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.padding(10.dp)
+                                    )
+                                }
+                            }
+                            if (aiCaptionState.result.hashtags.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    items(aiCaptionState.result.hashtags) { tag ->
+                                        AssistChip(
+                                            onClick = {
+                                                captionText = if (captionText.isEmpty()) tag else "$captionText $tag"
+                                            },
+                                            label = { Text(tag, fontSize = 11.sp) }
+                                        )
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Tip: ${aiCaptionState.result.engagementTip}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        is AiCaptionUiState.Error -> {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = aiCaptionState.message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+
+                        else -> Unit
+                    }
+                }
+            }
+
             // Caption Text Input
             TextField(
                 value = captionText,
@@ -253,7 +392,7 @@ fun CreatePostScreen(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(90.dp)
+                    .heightIn(min = 90.dp)
                     .testTag("create_post_caption_input"),
                 colors = TextFieldDefaults.colors(
                     focusedContainerColor = Color.Transparent,

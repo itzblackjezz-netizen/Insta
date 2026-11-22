@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CheckCircle
@@ -53,6 +54,7 @@ fun ProfileScreen(
     posts: List<Post>,
     highlights: List<StoryHighlight>,
     onEditProfileClick: () -> Unit,
+    onSignOutClick: () -> Unit,
     onPostClick: (Post) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -92,8 +94,20 @@ fun ProfileScreen(
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                IconButton(onClick = { /* Menu */ }, modifier = Modifier.size(32.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                IconButton(
+                    onClick = onSignOutClick,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("sign_out_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Logout,
+                        contentDescription = "Sign out",
+                        tint = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+                IconButton(onClick = { /* Menu */ }, modifier = Modifier.size(36.dp)) {
                     Icon(
                         imageVector = Icons.Default.Menu,
                         contentDescription = "Menu",

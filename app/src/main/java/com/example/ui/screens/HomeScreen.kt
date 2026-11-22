@@ -39,6 +39,7 @@ fun HomeScreen(
     onShareClick: (Post) -> Unit,
     onSaveClick: (String) -> Unit,
     onOptionsClick: (Post) -> Unit,
+    onAiInsightsClick: (Post) -> Unit,
     onUserClick: (User) -> Unit,
     onAddQuickComment: (String, String) -> Unit,
     onLoadMore: () -> Unit,
@@ -99,6 +100,7 @@ fun HomeScreen(
                     onShareClick = { onShareClick(post) },
                     onSaveClick = { onSaveClick(post.id) },
                     onOptionsClick = { onOptionsClick(post) },
+                    onAiInsightsClick = { onAiInsightsClick(post) },
                     onUserClick = { onUserClick(post.user) },
                     onAddQuickComment = { text -> onAddQuickComment(post.id, text) }
                 )

@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.VolumeMute
 import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -45,6 +46,7 @@ import coil.compose.AsyncImage
 import com.example.model.Post
 import com.example.ui.theme.IgBlue
 import com.example.ui.theme.IgLightHashtag
+import com.example.ui.theme.IgPink
 import com.example.ui.theme.IgRed
 import com.example.ui.theme.InstagramGradient
 import java.text.NumberFormat
@@ -59,6 +61,7 @@ fun PostCard(
     onShareClick: () -> Unit,
     onSaveClick: () -> Unit,
     onOptionsClick: () -> Unit,
+    onAiInsightsClick: () -> Unit,
     onUserClick: () -> Unit,
     onAddQuickComment: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -315,6 +318,21 @@ fun PostCard(
                         imageVector = Icons.Outlined.Send,
                         contentDescription = "Share",
                         tint = MaterialTheme.colorScheme.onBackground,
+                        modifier = Modifier.size(23.dp)
+                    )
+                }
+
+                // Gemini AI Insights Button
+                IconButton(
+                    onClick = onAiInsightsClick,
+                    modifier = Modifier
+                        .size(34.dp)
+                        .testTag("ai_insights_button_${post.id}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.AutoAwesome,
+                        contentDescription = "Gemini AI Post Insights",
+                        tint = IgPink,
                         modifier = Modifier.size(23.dp)
                     )
                 }

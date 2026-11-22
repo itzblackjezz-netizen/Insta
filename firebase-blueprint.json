@@ -1,0 +1,263 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated user's InstaSnap profile metadata",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the profile owner"
+        },
+        "username": {
+          "type": "string",
+          "description": "Display handle (2 to 30 characters)"
+        },
+        "fullName": {
+          "type": "string",
+          "description": "Full display name (1 to 60 characters)"
+        },
+        "bio": {
+          "type": "string",
+          "description": "Profile biography (0 to 250 characters)"
+        },
+        "link": {
+          "type": "string",
+          "description": "Optional website link (0 to 120 characters)"
+        },
+        "avatarUrl": {
+          "type": "string",
+          "description": "Profile avatar URL (0 to 500 characters)"
+        },
+        "verified": {
+          "type": "boolean",
+          "description": "Whether the profile displays a verified badge"
+        },
+        "postsCount": {
+          "type": "integer",
+          "description": "Total number of user posts"
+        },
+        "followersCount": {
+          "type": "string",
+          "description": "Formatted followers count"
+        },
+        "followingCount": {
+          "type": "string",
+          "description": "Formatted following count"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp (clients must submit FieldValue.serverTimestamp())"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update timestamp (clients must submit FieldValue.serverTimestamp())"
+        }
+      },
+      "required": [
+        "userId",
+        "username",
+        "fullName",
+        "avatarUrl",
+        "verified",
+        "postsCount",
+        "followersCount",
+        "followingCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserPost": {
+      "title": "UserPost",
+      "description": "A social post authored by the authenticated user",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the post author"
+        },
+        "authorUsername": {
+          "type": "string",
+          "description": "Author handle"
+        },
+        "authorAvatarUrl": {
+          "type": "string",
+          "description": "Author avatar URL"
+        },
+        "location": {
+          "type": "string",
+          "description": "Optional post location tag"
+        },
+        "caption": {
+          "type": "string",
+          "description": "Post caption text"
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "Primary post image URL"
+        },
+        "hashtags": {
+          "type": "array",
+          "description": "List of hashtags (max 20)"
+        },
+        "likesCount": {
+          "type": "integer",
+          "description": "Like count"
+        },
+        "liked": {
+          "type": "boolean",
+          "description": "Whether the current user liked this post"
+        },
+        "saved": {
+          "type": "boolean",
+          "description": "Whether the current user bookmarked this post"
+        },
+        "commentsCount": {
+          "type": "integer",
+          "description": "Number of comments on the post"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp (clients must submit FieldValue.serverTimestamp())"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Update timestamp (clients must submit FieldValue.serverTimestamp())"
+        }
+      },
+      "required": [
+        "userId",
+        "authorUsername",
+        "authorAvatarUrl",
+        "caption",
+        "imageUrl",
+        "hashtags",
+        "likesCount",
+        "liked",
+        "saved",
+        "commentsCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "PostInteractionState": {
+      "title": "PostInteractionState",
+      "description": "Persisted like and bookmark state for a feed post",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID"
+        },
+        "postId": {
+          "type": "string",
+          "description": "ID of the feed post"
+        },
+        "liked": {
+          "type": "boolean",
+          "description": "Whether the user liked the post"
+        },
+        "saved": {
+          "type": "boolean",
+          "description": "Whether the user saved the post"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp (FieldValue.serverTimestamp())"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Update timestamp (FieldValue.serverTimestamp())"
+        }
+      },
+      "required": [
+        "userId",
+        "postId",
+        "liked",
+        "saved",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "UserComment": {
+      "title": "UserComment",
+      "description": "A comment authored by the signed-in user",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Firebase Auth UID of the comment author"
+        },
+        "postId": {
+          "type": "string",
+          "description": "ID of the post commented on"
+        },
+        "authorUsername": {
+          "type": "string",
+          "description": "Comment author username"
+        },
+        "authorAvatarUrl": {
+          "type": "string",
+          "description": "Comment author avatar URL"
+        },
+        "text": {
+          "type": "string",
+          "description": "Comment text (1 to 500 characters)"
+        },
+        "likesCount": {
+          "type": "integer",
+          "description": "Comment likes count"
+        },
+        "liked": {
+          "type": "boolean",
+          "description": "Whether the comment is liked"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation timestamp (FieldValue.serverTimestamp())"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Update timestamp (FieldValue.serverTimestamp())"
+        }
+      },
+      "required": [
+        "userId",
+        "postId",
+        "authorUsername",
+        "authorAvatarUrl",
+        "text",
+        "likesCount",
+        "liked",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User profile document owned by userId"
+    },
+    "/users/{userId}/posts/{postId}": {
+      "schema": { "$ref": "#/entities/UserPost" },
+      "description": "User-authored social media posts"
+    },
+    "/users/{userId}/post_states/{postId}": {
+      "schema": { "$ref": "#/entities/PostInteractionState" },
+      "description": "Persisted like and save interaction state per post"
+    },
+    "/users/{userId}/comments/{commentId}": {
+      "schema": { "$ref": "#/entities/UserComment" },
+      "description": "Persisted comments authored by the user"
+    }
+  }
+}
