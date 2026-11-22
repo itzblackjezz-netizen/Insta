@@ -64,11 +64,13 @@ data class Reel(
     val caption: String,
     val audioTitle: String,
     val mediaUrl: String,
+    val videoUrl: String = "",
     val likesCount: Int,
     val commentsCount: Int,
     val sharesCount: Int,
     val isLiked: Boolean = false,
-    val isSaved: Boolean = false
+    val isSaved: Boolean = false,
+    val comments: List<Comment> = emptyList()
 )
 
 enum class NotificationType {
@@ -84,8 +86,10 @@ data class NotificationItem(
     val type: NotificationType,
     val text: String,
     val postThumbnailUrl: String? = null,
+    val postId: String? = null,
     val timestamp: String,
-    val isFollowingBack: Boolean = false
+    val isFollowingBack: Boolean = false,
+    val isRead: Boolean = false
 )
 
 data class DirectMessage(

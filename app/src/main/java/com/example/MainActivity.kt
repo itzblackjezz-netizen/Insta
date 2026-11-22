@@ -221,6 +221,9 @@ fun InstagramApp(
     val isRefreshingFeed by viewModel.isRefreshingFeed.collectAsStateWithLifecycle()
     val isLoadingMore by viewModel.isLoadingMorePosts.collectAsStateWithLifecycle()
     val followedUsers by viewModel.followedUsers.collectAsStateWithLifecycle()
+    val isReelMuted by viewModel.isReelMuted.collectAsStateWithLifecycle()
+    val unreadNotificationsCount by viewModel.unreadNotificationsCount.collectAsStateWithLifecycle()
+    val activeActivityAlert by viewModel.activeActivityAlert.collectAsStateWithLifecycle()
     val snackbarMessage by viewModel.snackbarMessage.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
@@ -229,6 +232,14 @@ fun InstagramApp(
         snackbarMessage?.let { msg ->
             snackbarHostState.showSnackbar(msg)
             viewModel.clearSnackbar()
+        }
+    }
+
+    // Trigger a local activity alert shortly after entering the feed if notifications haven't been viewed yet
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(3500)
+        if (!viewModel.showNotifications.value) {
+            viewModel.simulateLocalActivity()
         }
     }
 
@@ -258,7 +269,8 @@ fun InstagramApp(
                     onTabSelected = { viewModel.selectTab(it) },
                     currentUser = currentUser,
                     onOpenNotifications = { viewModel.setShowNotifications(true) },
-                    onOpenMessages = { viewModel.setShowDirectMessages(true) }
+                    onOpenMessages = { viewModel.setShowDirectMessages(true) },
+                    hasUnreadNotifications = unreadNotificationsCount > 0
                 )
 
                 VerticalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
@@ -279,6 +291,7 @@ fun InstagramApp(
                         isRefreshingFeed = isRefreshingFeed,
                         isLoadingMore = isLoadingMore,
                         followedUsers = followedUsers,
+                        isReelMuted = isReelMuted,
                         aiCaptionState = aiCaptionState,
                         onSignOutClick = onSignOutClick,
                         onOpenUpdatesSettings = onOpenUpdatesSettings
@@ -295,7 +308,9 @@ fun InstagramApp(
                             isDarkMode = isDarkMode,
                             onToggleDarkMode = { viewModel.toggleDarkMode() },
                             onOpenNotifications = { viewModel.setShowNotifications(true) },
-                            onOpenDirectMessages = { viewModel.setShowDirectMessages(true) }
+                            onOpenDirectMessages = { viewModel.setShowDirectMessages(true) },
+                            hasUnreadNotifications = unreadNotificationsCount > 0,
+                            unreadMessagesCount = directMessages.sumOf { it.unreadCount }
                         )
                     }
                 },
@@ -332,6 +347,7 @@ fun InstagramApp(
                         isRefreshingFeed = isRefreshingFeed,
                         isLoadingMore = isLoadingMore,
                         followedUsers = followedUsers,
+                        isReelMuted = isReelMuted,
                         aiCaptionState = aiCaptionState,
                         onSignOutClick = onSignOutClick,
                         onOpenUpdatesSettings = onOpenUpdatesSettings
@@ -352,7 +368,7 @@ fun InstagramApp(
             )
         }
 
-        // Overlay: Notifications Screen
+        // Overlay: Notifications / Local Activity Feed Screen
         AnimatedVisibility(
             visible = showNotifications,
             enter = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
@@ -360,8 +376,36 @@ fun InstagramApp(
         ) {
             NotificationsScreen(
                 notifications = notifications,
+                followedUsers = followedUsers,
+                onToggleFollowUser = { userId -> viewModel.toggleFollowUser(userId) },
+                onPostNotificationClick = { item ->
+                    val linkedPost = item.postId?.let { id -> posts.firstOrNull { it.id == id } }
+                    if (linkedPost != null) {
+                        viewModel.setShowNotifications(false)
+                        viewModel.openComments(linkedPost)
+                    } else if (item.type == com.example.model.NotificationType.FOLLOW) {
+                        viewModel.toggleFollowUser(item.user.id)
+                    }
+                },
+                onSimulateActivity = { viewModel.simulateLocalActivity() },
                 onBack = { viewModel.setShowNotifications(false) }
             )
+        }
+
+        // Floating In-App Local Activity Alert Banner (Post Likes & New Followers)
+        if (!showNotifications) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.TopCenter),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                ActivityAlertBanner(
+                    notification = activeActivityAlert,
+                    onOpenActivityFeed = { viewModel.setShowNotifications(true) },
+                    onDismiss = { viewModel.dismissActivityAlert() }
+                )
+            }
         }
 
         // Dialog: Fullscreen Story Viewer
@@ -444,6 +488,7 @@ private fun ScreenContent(
     isRefreshingFeed: Boolean,
     isLoadingMore: Boolean,
     followedUsers: Map<String, Boolean>,
+    isReelMuted: Boolean,
     aiCaptionState: com.example.ui.viewmodel.AiCaptionUiState,
     onSignOutClick: () -> Unit,
     onOpenUpdatesSettings: () -> Unit
@@ -501,8 +546,17 @@ private fun ScreenContent(
         NavigationTab.REELS -> {
             ReelsScreen(
                 reels = reels,
+                currentUser = currentUser,
+                followedUsers = followedUsers,
+                isMuted = isReelMuted,
+                onToggleMute = { viewModel.toggleReelMute() },
                 onLikeReel = { reelId -> viewModel.toggleLikeReel(reelId) },
-                onSaveReel = { reelId -> viewModel.toggleSaveReel(reelId) }
+                onDoubleTapLikeReel = { reelId -> viewModel.doubleTapLikeReel(reelId) },
+                onSaveReel = { reelId -> viewModel.toggleSaveReel(reelId) },
+                onToggleFollowUser = { userId -> viewModel.toggleFollowUser(userId) },
+                onAddReelComment = { reelId, text -> viewModel.addReelComment(reelId, text) },
+                onShareReel = { reel, recipient -> viewModel.shareReel(reel, recipient) },
+                onCreateReelClick = { viewModel.selectTab(NavigationTab.CREATE) }
             )
         }
         NavigationTab.PROFILE -> {

@@ -332,38 +332,102 @@ object SampleData {
         Reel(
             id = "reel_1",
             user = sampleUsers[1],
-            caption = "Chasing bullet trains into twilight in Kyoto 🚄✨ Watch until the end for the mountain view!",
+            caption = "Chasing bullet trains into twilight in Kyoto 🚄✨ Watch until the end for the mountain view! #kyoto #travelreels",
             audioTitle = "Original Audio • marco_lens (Kyoto Ambience)",
             mediaUrl = "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=800&auto=format&fit=crop&q=80",
+            videoUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
             likesCount = 42800,
             commentsCount = 1320,
             sharesCount = 5400,
             isLiked = true,
-            isSaved = true
+            isSaved = true,
+            comments = listOf(
+                Comment(
+                    id = "rc1_1",
+                    username = "elena_v",
+                    userAvatar = sampleUsers[0].avatarUrl,
+                    text = "The colors right after sunset in Kyoto are unbeatable!",
+                    timestamp = "18m",
+                    likesCount = 24
+                ),
+                Comment(
+                    id = "rc1_2",
+                    username = "maya_style",
+                    userAvatar = sampleUsers[2].avatarUrl,
+                    text = "Adding this spot to my Japan itinerary immediately 🙌",
+                    timestamp = "9m",
+                    likesCount = 7
+                )
+            )
         ),
         Reel(
             id = "reel_2",
             user = sampleUsers[0],
-            caption = "How light transforms this museum hallway over 6 hours. Architectural timelapse 🏛️",
+            caption = "How light transforms this museum hallway over 6 hours. Architectural timelapse 🏛️ #architecture #lightstudy",
             audioTitle = "Nils Frahm • Says",
             mediaUrl = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=800&auto=format&fit=crop&q=80",
+            videoUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
             likesCount = 61900,
             commentsCount = 840,
             sharesCount = 9800,
             isLiked = false,
-            isSaved = false
+            isSaved = false,
+            comments = listOf(
+                Comment(
+                    id = "rc2_1",
+                    username = "nordic_spaces",
+                    userAvatar = sampleUsers[3].avatarUrl,
+                    text = "That shadow movement across the concrete is mesmerizing.",
+                    timestamp = "42m",
+                    likesCount = 15
+                )
+            )
         ),
         Reel(
             id = "reel_3",
             user = sampleUsers[2],
-            caption = "3 ways to style an oversized vintage trench this season 🧥 Which look was your favorite? 1, 2, or 3?",
+            caption = "3 ways to style an oversized vintage trench this season 🧥 Which look was your favorite? 1, 2, or 3? #style #ootd",
             audioTitle = "Peggy Gou • (It Goes Like) Nanana",
             mediaUrl = "https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800&auto=format&fit=crop&q=80",
+            videoUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4",
             likesCount = 88400,
             commentsCount = 2940,
             sharesCount = 14200,
             isLiked = false,
-            isSaved = false
+            isSaved = false,
+            comments = listOf(
+                Comment(
+                    id = "rc3_1",
+                    username = "chef_clara",
+                    userAvatar = sampleUsers[4].avatarUrl,
+                    text = "Look #2 with the knit scarf is pure autumn perfection!",
+                    timestamp = "1h",
+                    likesCount = 31
+                )
+            )
+        ),
+        Reel(
+            id = "reel_4",
+            user = sampleUsers[4],
+            caption = "Morning espresso pull & warm croissant layers straight from the deck oven ☕🥐 #paris #artisanbakery",
+            audioTitle = "French Café Quartet • Le Matin",
+            mediaUrl = "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=800&auto=format&fit=crop&q=80",
+            videoUrl = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoy.mp4",
+            likesCount = 34500,
+            commentsCount = 615,
+            sharesCount = 4120,
+            isLiked = false,
+            isSaved = false,
+            comments = listOf(
+                Comment(
+                    id = "rc4_1",
+                    username = "marco_lens",
+                    userAvatar = sampleUsers[1].avatarUrl,
+                    text = "I need that flaky crust right now 😭",
+                    timestamp = "2h",
+                    likesCount = 11
+                )
+            )
         )
     )
 
@@ -427,24 +491,29 @@ object SampleData {
             user = sampleUsers[0],
             type = NotificationType.LIKE,
             text = "liked your post.",
-            postThumbnailUrl = "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=150&auto=format&fit=crop&q=80",
-            timestamp = "15m"
+            postThumbnailUrl = "https://images.unsplash.com/photo-1513694203232-719a280e022f?w=150&auto=format&fit=crop&q=80",
+            postId = "post_1",
+            timestamp = "15m",
+            isRead = false
         ),
         NotificationItem(
             id = "notif_2",
-            user = sampleUsers[1],
-            type = NotificationType.COMMENT,
-            text = "commented: \"Love this color grading!\"",
-            postThumbnailUrl = "https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=150&auto=format&fit=crop&q=80",
-            timestamp = "45m"
-        ),
-        NotificationItem(
-            id = "notif_3",
             user = sampleUsers[2],
             type = NotificationType.FOLLOW,
             text = "started following you.",
+            timestamp = "42m",
+            isFollowingBack = true,
+            isRead = false
+        ),
+        NotificationItem(
+            id = "notif_3",
+            user = sampleUsers[1],
+            type = NotificationType.COMMENT,
+            text = "commented: \"Love this color grading!\"",
+            postThumbnailUrl = "https://images.unsplash.com/photo-1503899036084-c55cdd92da26?w=150&auto=format&fit=crop&q=80",
+            postId = "post_2",
             timestamp = "2h",
-            isFollowingBack = true
+            isRead = true
         ),
         NotificationItem(
             id = "notif_4",
@@ -452,15 +521,19 @@ object SampleData {
             type = NotificationType.MENTION,
             text = "mentioned you in a comment.",
             postThumbnailUrl = "https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=150&auto=format&fit=crop&q=80",
-            timestamp = "6h"
+            postId = "post_4",
+            timestamp = "6h",
+            isRead = true
         ),
         NotificationItem(
             id = "notif_5",
             user = sampleUsers[4],
             type = NotificationType.LIKE,
             text = "and 48 others liked your reel.",
-            postThumbnailUrl = "https://images.unsplash.com/photo-1501594907352-04cda38ebc29?w=150&auto=format&fit=crop&q=80",
-            timestamp = "1d"
+            postThumbnailUrl = "https://images.unsplash.com/photo-1509440159596-0249088772ff?w=150&auto=format&fit=crop&q=80",
+            postId = "post_5",
+            timestamp = "1d",
+            isRead = true
         )
     )
 

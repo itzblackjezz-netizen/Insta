@@ -28,6 +28,7 @@ fun AdaptiveNavigationRail(
     currentUser: User,
     onOpenNotifications: () -> Unit,
     onOpenMessages: () -> Unit,
+    hasUnreadNotifications: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     NavigationRail(
@@ -126,12 +127,20 @@ fun AdaptiveNavigationRail(
                     selected = false,
                     onClick = onOpenNotifications,
                     icon = {
-                        Icon(
-                            imageVector = Icons.Outlined.FavoriteBorder,
-                            contentDescription = "Notifications"
-                        )
+                        BadgedBox(
+                            badge = {
+                                if (hasUnreadNotifications) {
+                                    Badge()
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.FavoriteBorder,
+                                contentDescription = "Activity"
+                            )
+                        }
                     },
-                    label = { Text("Notifications", fontSize = 11.sp) },
+                    label = { Text("Activity", fontSize = 11.sp) },
                     modifier = Modifier.testTag("rail_nav_notifications")
                 )
             }

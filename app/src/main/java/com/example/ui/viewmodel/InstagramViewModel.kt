@@ -226,6 +226,9 @@ class InstagramViewModel(
     private val _reels = MutableStateFlow<List<Reel>>(SampleData.sampleReels)
     val reels: StateFlow<List<Reel>> = _reels.asStateFlow()
 
+    private val _isReelMuted = MutableStateFlow(false)
+    val isReelMuted: StateFlow<Boolean> = _isReelMuted.asStateFlow()
+
     private val _currentTab = MutableStateFlow(NavigationTab.HOME)
     val currentTab: StateFlow<NavigationTab> = _currentTab.asStateFlow()
 
@@ -268,6 +271,15 @@ class InstagramViewModel(
 
     private val _notifications = MutableStateFlow<List<NotificationItem>>(SampleData.sampleNotifications)
     val notifications: StateFlow<List<NotificationItem>> = _notifications.asStateFlow()
+
+    val unreadNotificationsCount: StateFlow<Int> = _notifications
+        .combine(MutableStateFlow(Unit)) { list, _ -> list.count { !it.isRead } }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), SampleData.sampleNotifications.count { !it.isRead })
+
+    private val _activeActivityAlert = MutableStateFlow<NotificationItem?>(null)
+    val activeActivityAlert: StateFlow<NotificationItem?> = _activeActivityAlert.asStateFlow()
+
+    private var activitySimulationCounter = 0
 
     private val _directMessages = MutableStateFlow<List<DirectMessage>>(SampleData.sampleDirectMessages)
     val directMessages: StateFlow<List<DirectMessage>> = _directMessages.asStateFlow()
@@ -350,6 +362,72 @@ class InstagramViewModel(
 
     fun setShowNotifications(show: Boolean) {
         _showNotifications.value = show
+        if (show) {
+            markNotificationsAsRead()
+            _activeActivityAlert.value = null
+        }
+    }
+
+    fun markNotificationsAsRead() {
+        _notifications.update { list ->
+            list.map { if (it.isRead) it else it.copy(isRead = true) }
+        }
+    }
+
+    fun dismissActivityAlert() {
+        _activeActivityAlert.value = null
+    }
+
+    fun recordPostLikeActivity(
+        actor: User,
+        postId: String? = null,
+        postThumbnailUrl: String? = null
+    ) {
+        val newItem = NotificationItem(
+            id = "notif_like_${UUID.randomUUID()}",
+            user = actor,
+            type = NotificationType.LIKE,
+            text = "liked your post.",
+            postThumbnailUrl = postThumbnailUrl,
+            postId = postId,
+            timestamp = "Just now",
+            isFollowingBack = _followedUsersOverride.value[actor.id] ?: actor.isFollowing,
+            isRead = false
+        )
+        _notifications.update { list -> listOf(newItem) + list }
+        _activeActivityAlert.value = newItem
+    }
+
+    fun recordFollowActivity(actor: User) {
+        val newItem = NotificationItem(
+            id = "notif_follow_${UUID.randomUUID()}",
+            user = actor,
+            type = NotificationType.FOLLOW,
+            text = "started following you.",
+            timestamp = "Just now",
+            isFollowingBack = _followedUsersOverride.value[actor.id] ?: actor.isFollowing,
+            isRead = false
+        )
+        _notifications.update { list -> listOf(newItem) + list }
+        _activeActivityAlert.value = newItem
+    }
+
+    fun simulateLocalActivity() {
+        val creators = SampleData.sampleUsers
+        if (creators.isEmpty()) return
+        val actor = creators[activitySimulationCounter % creators.size]
+        val isLikeEvent = activitySimulationCounter % 2 == 0
+        activitySimulationCounter++
+        if (isLikeEvent) {
+            val targetPost = posts.value.firstOrNull()
+            recordPostLikeActivity(
+                actor = actor,
+                postId = targetPost?.id,
+                postThumbnailUrl = targetPost?.mediaUrls?.firstOrNull()
+            )
+        } else {
+            recordFollowActivity(actor = actor)
+        }
     }
 
     fun setShowEditProfileDialog(show: Boolean) {
@@ -671,6 +749,16 @@ class InstagramViewModel(
         }
     }
 
+    fun doubleTapLikeReel(reelId: String) {
+        _reels.update { list ->
+            list.map { reel ->
+                if (reel.id == reelId && !reel.isLiked) {
+                    reel.copy(isLiked = true, likesCount = reel.likesCount + 1)
+                } else reel
+            }
+        }
+    }
+
     fun toggleSaveReel(reelId: String) {
         _reels.update { list ->
             list.map { reel ->
@@ -680,6 +768,65 @@ class InstagramViewModel(
                     reel.copy(isSaved = newSaved)
                 } else reel
             }
+        }
+    }
+
+    fun toggleReelMute() {
+        _isReelMuted.update { !it }
+    }
+
+    fun addReelComment(reelId: String, text: String) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty()) return
+        val user = currentUser.value
+        val newComment = Comment(
+            id = "rc_${UUID.randomUUID()}",
+            username = user.username,
+            userAvatar = user.avatarUrl,
+            text = trimmed,
+            timestamp = "Just now",
+            likesCount = 0
+        )
+        _reels.update { list ->
+            list.map { reel ->
+                if (reel.id == reelId) {
+                    reel.copy(
+                        comments = listOf(newComment) + reel.comments,
+                        commentsCount = reel.commentsCount + 1
+                    )
+                } else reel
+            }
+        }
+    }
+
+    fun shareReel(reel: Reel, recipient: User? = null) {
+        _reels.update { list ->
+            list.map { item ->
+                if (item.id == reel.id) item.copy(sharesCount = item.sharesCount + 1) else item
+            }
+        }
+        if (recipient != null) {
+            val preview = "Shared a reel by @${reel.user.username}"
+            _directMessages.update { list ->
+                val idx = list.indexOfFirst { it.user.id == recipient.id || it.user.username == recipient.username }
+                if (idx >= 0) {
+                    val updated = list[idx].copy(lastMessage = preview, timestamp = "Just now")
+                    listOf(updated) + list.filterIndexed { i, _ -> i != idx }
+                } else {
+                    listOf(
+                        DirectMessage(
+                            id = "dm_reel_${recipient.id}",
+                            user = recipient,
+                            lastMessage = preview,
+                            timestamp = "Just now",
+                            isOnline = true
+                        )
+                    ) + list
+                }
+            }
+            _snackbarMessage.value = "Reel sent to @${recipient.username}"
+        } else {
+            _snackbarMessage.value = "Reel link copied to clipboard"
         }
     }
 
@@ -703,9 +850,21 @@ class InstagramViewModel(
                 hashtags = hashtags
             )
             if (res.isSuccess) {
+                val createdPostId = res.getOrNull()
                 _aiCaptionState.value = AiCaptionUiState.Idle
                 _snackbarMessage.value = "Post published to Firestore! 🎉"
                 _currentTab.value = NavigationTab.HOME
+                val reactor = SampleData.sampleUsers.firstOrNull()
+                if (reactor != null) {
+                    viewModelScope.launch {
+                        kotlinx.coroutines.delay(2000)
+                        recordPostLikeActivity(
+                            actor = reactor,
+                            postId = createdPostId,
+                            postThumbnailUrl = imageUrl
+                        )
+                    }
+                }
             } else {
                 _snackbarMessage.value = res.exceptionOrNull()?.localizedMessage ?: "Failed to publish post"
             }

@@ -389,4 +389,61 @@ class InstagramViewModelTest {
         assertFalse(viewModel.isRefreshingFeed.value)
         assertTrue(viewModel.posts.value.any { it.id == "remote_post_99" })
     }
+
+    @Test
+    fun testReelsInteractionsCommentShareAndMute() {
+        val initialReel = viewModel.reels.value.first()
+        val initialComments = initialReel.commentsCount
+        val initialShares = initialReel.sharesCount
+        val initialLikes = initialReel.likesCount
+
+        viewModel.toggleLikeReel(initialReel.id)
+        val afterToggle = viewModel.reels.value.first { it.id == initialReel.id }
+        assertEquals(!initialReel.isLiked, afterToggle.isLiked)
+
+        if (!afterToggle.isLiked) {
+            viewModel.doubleTapLikeReel(initialReel.id)
+            assertTrue(viewModel.reels.value.first { it.id == initialReel.id }.isLiked)
+            assertEquals(initialLikes, viewModel.reels.value.first { it.id == initialReel.id }.likesCount)
+        }
+
+        viewModel.addReelComment(initialReel.id, "Amazing cinematography!")
+        val afterComment = viewModel.reels.value.first { it.id == initialReel.id }
+        assertEquals(initialComments + 1, afterComment.commentsCount)
+        assertEquals("Amazing cinematography!", afterComment.comments.first().text)
+
+        viewModel.shareReel(afterComment, com.example.data.SampleData.sampleUsers.first())
+        val afterShare = viewModel.reels.value.first { it.id == initialReel.id }
+        assertEquals(initialShares + 1, afterShare.sharesCount)
+
+        assertFalse(viewModel.isReelMuted.value)
+        viewModel.toggleReelMute()
+        assertTrue(viewModel.isReelMuted.value)
+    }
+
+    @Test
+    fun testLocalActivityNotificationsAndUnreadState() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.unreadNotificationsCount.collect {}
+        }
+        val actor = com.example.data.SampleData.sampleUsers.first()
+        val initialUnread = viewModel.unreadNotificationsCount.value
+
+        viewModel.recordPostLikeActivity(
+            actor = actor,
+            postId = "post_1",
+            postThumbnailUrl = "https://example.com/thumb.jpg"
+        )
+        assertEquals(initialUnread + 1, viewModel.unreadNotificationsCount.value)
+        assertEquals(actor.username, viewModel.activeActivityAlert.value?.user?.username)
+        assertEquals(com.example.model.NotificationType.LIKE, viewModel.activeActivityAlert.value?.type)
+
+        viewModel.recordFollowActivity(actor = com.example.data.SampleData.sampleUsers[1])
+        assertEquals(initialUnread + 2, viewModel.unreadNotificationsCount.value)
+        assertEquals(com.example.model.NotificationType.FOLLOW, viewModel.activeActivityAlert.value?.type)
+
+        viewModel.setShowNotifications(true)
+        assertEquals(0, viewModel.unreadNotificationsCount.value)
+        assertNull(viewModel.activeActivityAlert.value)
+    }
 }
