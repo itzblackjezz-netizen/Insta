@@ -562,22 +562,131 @@ object SampleData {
         )
     )
 
+    data class SampleChatMedia(
+        val id: String,
+        val title: String,
+        val mediaUri: String,
+        val thumbnailUrl: String,
+        val mediaType: ChatMediaType
+    )
+
+    val sampleChatMedia = listOf(
+        SampleChatMedia(
+            id = "cm_1",
+            title = "Sunset Architecture",
+            mediaUri = "https://images.unsplash.com/photo-1513694203232-719a280e022f?w=900&auto=format&fit=crop&q=85",
+            thumbnailUrl = "https://images.unsplash.com/photo-1513694203232-719a280e022f?w=400&auto=format&fit=crop&q=80",
+            mediaType = ChatMediaType.IMAGE
+        ),
+        SampleChatMedia(
+            id = "cm_2",
+            title = "Neon Tokyo Street",
+            mediaUri = "https://images.unsplash.com/photo-1503899036084-c55cdd92da26?w=900&auto=format&fit=crop&q=85",
+            thumbnailUrl = "https://images.unsplash.com/photo-1503899036084-c55cdd92da26?w=400&auto=format&fit=crop&q=80",
+            mediaType = ChatMediaType.IMAGE
+        ),
+        SampleChatMedia(
+            id = "cm_3",
+            title = "Kyoto Escape Clip",
+            mediaUri = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
+            thumbnailUrl = "https://images.unsplash.com/photo-1493976040374-85c8e12f0c0e?w=600&auto=format&fit=crop&q=80",
+            mediaType = ChatMediaType.VIDEO
+        ),
+        SampleChatMedia(
+            id = "cm_4",
+            title = "Studio Timelapse Clip",
+            mediaUri = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+            thumbnailUrl = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=600&auto=format&fit=crop&q=80",
+            mediaType = ChatMediaType.VIDEO
+        ),
+        SampleChatMedia(
+            id = "cm_5",
+            title = "Morning Espresso",
+            mediaUri = "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=900&auto=format&fit=crop&q=85",
+            thumbnailUrl = "https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=400&auto=format&fit=crop&q=80",
+            mediaType = ChatMediaType.IMAGE
+        )
+    )
+
     val sampleDirectMessages = listOf(
         DirectMessage(
             id = "dm_1",
             user = sampleUsers[0],
-            lastMessage = "Sent a reel • 15m ago",
+            lastMessage = "Check out the new museum light study clip! 🏛️",
             timestamp = "15m",
-            unreadCount = 1,
-            isOnline = true
+            unreadCount = 2,
+            isOnline = true,
+            lastSeenText = "Active now",
+            messages = listOf(
+                ChatMessage(
+                    id = "m1_1",
+                    senderId = sampleUsers[0].id,
+                    text = "Hey Alex! Did you get a chance to check out the Valencia pavilion shots?",
+                    timestamp = "10:14 AM",
+                    reactions = mapOf(currentUser.id to "🔥"),
+                    status = MessageDeliveryStatus.SEEN,
+                    isFromMe = false
+                ),
+                ChatMessage(
+                    id = "m1_2",
+                    senderId = currentUser.id,
+                    text = "Yes! The geometry on that second angle is unreal.",
+                    timestamp = "10:18 AM",
+                    reactions = mapOf(sampleUsers[0].id to "❤️"),
+                    status = MessageDeliveryStatus.SEEN,
+                    isFromMe = true
+                ),
+                ChatMessage(
+                    id = "m1_3",
+                    senderId = sampleUsers[0].id,
+                    text = "Sent a photo from the courtyard",
+                    mediaUri = "https://images.unsplash.com/photo-1513694203232-719a280e022f?w=900&auto=format&fit=crop&q=85",
+                    mediaType = ChatMediaType.IMAGE,
+                    thumbnailUrl = "https://images.unsplash.com/photo-1513694203232-719a280e022f?w=500&auto=format&fit=crop&q=80",
+                    timestamp = "10:21 AM",
+                    status = MessageDeliveryStatus.SEEN,
+                    isFromMe = false
+                ),
+                ChatMessage(
+                    id = "m1_4",
+                    senderId = sampleUsers[0].id,
+                    text = "Check out the new museum light study clip! 🏛️",
+                    mediaUri = "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+                    mediaType = ChatMediaType.VIDEO,
+                    thumbnailUrl = "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?w=600&auto=format&fit=crop&q=80",
+                    timestamp = "10:24 AM",
+                    status = MessageDeliveryStatus.DELIVERED,
+                    isFromMe = false
+                )
+            )
         ),
         DirectMessage(
             id = "dm_2",
             user = sampleUsers[1],
-            lastMessage = "Are you coming to the photowalk tomorrow?",
+            lastMessage = "You: Count me in! Bringing the 35mm lens.",
             timestamp = "2h",
             unreadCount = 0,
-            isOnline = true
+            isOnline = true,
+            lastSeenText = "Active now",
+            messages = listOf(
+                ChatMessage(
+                    id = "m2_1",
+                    senderId = sampleUsers[1].id,
+                    text = "Are you coming to the photowalk tomorrow?",
+                    timestamp = "9:05 AM",
+                    status = MessageDeliveryStatus.SEEN,
+                    isFromMe = false
+                ),
+                ChatMessage(
+                    id = "m2_2",
+                    senderId = currentUser.id,
+                    text = "Count me in! Bringing the 35mm lens.",
+                    timestamp = "9:12 AM",
+                    reactions = mapOf(sampleUsers[1].id to "🙌"),
+                    status = MessageDeliveryStatus.SEEN,
+                    isFromMe = true
+                )
+            )
         ),
         DirectMessage(
             id = "dm_3",
@@ -585,7 +694,30 @@ object SampleData {
             lastMessage = "Loved the editorial concepts you shared!",
             timestamp = "Yesterday",
             unreadCount = 0,
-            isOnline = false
+            isOnline = false,
+            lastSeenText = "Active 3h ago",
+            messages = listOf(
+                ChatMessage(
+                    id = "m3_1",
+                    senderId = currentUser.id,
+                    text = "Here is the moodboard shot from SoHo",
+                    mediaUri = "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=900&auto=format&fit=crop&q=85",
+                    mediaType = ChatMediaType.IMAGE,
+                    thumbnailUrl = "https://images.unsplash.com/photo-1490481651871-ab68de25d43d?w=500&auto=format&fit=crop&q=80",
+                    timestamp = "Yesterday",
+                    status = MessageDeliveryStatus.SEEN,
+                    isFromMe = true
+                ),
+                ChatMessage(
+                    id = "m3_2",
+                    senderId = sampleUsers[2].id,
+                    text = "Loved the editorial concepts you shared!",
+                    timestamp = "Yesterday",
+                    reactions = mapOf(currentUser.id to "❤️"),
+                    status = MessageDeliveryStatus.SEEN,
+                    isFromMe = false
+                )
+            )
         ),
         DirectMessage(
             id = "dm_4",
@@ -593,7 +725,26 @@ object SampleData {
             lastMessage = "Thanks for the feedback!",
             timestamp = "2d",
             unreadCount = 0,
-            isOnline = false
+            isOnline = false,
+            lastSeenText = "Active 1d ago",
+            messages = listOf(
+                ChatMessage(
+                    id = "m4_1",
+                    senderId = currentUser.id,
+                    text = "The oak shelving lighting looks super clean.",
+                    timestamp = "2d ago",
+                    status = MessageDeliveryStatus.SEEN,
+                    isFromMe = true
+                ),
+                ChatMessage(
+                    id = "m4_2",
+                    senderId = sampleUsers[3].id,
+                    text = "Thanks for the feedback!",
+                    timestamp = "2d ago",
+                    status = MessageDeliveryStatus.SEEN,
+                    isFromMe = false
+                )
+            )
         )
     )
 }

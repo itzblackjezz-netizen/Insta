@@ -219,6 +219,7 @@ fun InstagramApp(
     val showEditProfileDialog by viewModel.showEditProfileDialog.collectAsStateWithLifecycle()
     val notifications by viewModel.notifications.collectAsStateWithLifecycle()
     val directMessages by viewModel.directMessages.collectAsStateWithLifecycle()
+    val activeChatThread by viewModel.activeChatThread.collectAsStateWithLifecycle()
     val isRefreshingFeed by viewModel.isRefreshingFeed.collectAsStateWithLifecycle()
     val isLoadingMore by viewModel.isLoadingMorePosts.collectAsStateWithLifecycle()
     val followedUsers by viewModel.followedUsers.collectAsStateWithLifecycle()
@@ -249,6 +250,7 @@ fun InstagramApp(
         enabled = showDirectMessages || showNotifications || currentTab != NavigationTab.HOME
     ) {
         when {
+            showDirectMessages && activeChatThread != null -> viewModel.closeChat()
             showDirectMessages -> viewModel.setShowDirectMessages(false)
             showNotifications -> viewModel.setShowNotifications(false)
             currentTab != NavigationTab.HOME -> viewModel.selectTab(NavigationTab.HOME)
@@ -271,7 +273,8 @@ fun InstagramApp(
                     currentUser = currentUser,
                     onOpenNotifications = { viewModel.setShowNotifications(true) },
                     onOpenMessages = { viewModel.setShowDirectMessages(true) },
-                    hasUnreadNotifications = unreadNotificationsCount > 0
+                    hasUnreadNotifications = unreadNotificationsCount > 0,
+                    unreadMessagesCount = directMessages.sumOf { it.unreadCount }
                 )
 
                 VerticalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
@@ -370,7 +373,31 @@ fun InstagramApp(
             exit = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
         ) {
             DirectMessagesScreen(
+                currentUser = currentUser,
                 messages = directMessages,
+                activeThread = activeChatThread,
+                onOpenChat = { conversationId -> viewModel.openChat(conversationId) },
+                onCloseChat = { viewModel.closeChat() },
+                onStartNewChat = { selectedUser -> viewModel.startNewConversation(selectedUser) },
+                onSendTextMessage = { conversationId, text ->
+                    viewModel.sendChatMessage(conversationId = conversationId, text = text)
+                },
+                onSendMediaMessage = { conversationId, mediaUri, mediaType, thumbnailUrl, caption ->
+                    viewModel.sendChatMessage(
+                        conversationId = conversationId,
+                        text = caption,
+                        mediaUri = mediaUri,
+                        mediaType = mediaType,
+                        thumbnailUrl = thumbnailUrl
+                    )
+                },
+                onToggleReaction = { conversationId, messageId, emoji ->
+                    viewModel.toggleMessageReaction(conversationId, messageId, emoji)
+                },
+                onOpenUserProfile = { targetUser ->
+                    viewModel.setShowDirectMessages(false)
+                    viewModel.openUserProfile(targetUser)
+                },
                 onBack = { viewModel.setShowDirectMessages(false) }
             )
         }

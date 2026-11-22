@@ -287,6 +287,15 @@ class InstagramViewModel(
     private val _directMessages = MutableStateFlow<List<DirectMessage>>(SampleData.sampleDirectMessages)
     val directMessages: StateFlow<List<DirectMessage>> = _directMessages.asStateFlow()
 
+    private val _activeChatId = MutableStateFlow<String?>(null)
+    val activeChatId: StateFlow<String?> = _activeChatId.asStateFlow()
+
+    val activeChatThread: StateFlow<DirectMessage?> = combine(_directMessages, _activeChatId) { list, id ->
+        id?.let { targetId -> list.firstOrNull { it.id == targetId } }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS), null)
+
+    private val chatSimulationJobs = mutableMapOf<String, Job>()
+
     private val _isLoadingMorePosts = MutableStateFlow(false)
     val isLoadingMorePosts: StateFlow<Boolean> = _isLoadingMorePosts.asStateFlow()
 
@@ -376,25 +385,59 @@ class InstagramViewModel(
     }
 
     fun messageUser(user: User) {
+        startNewConversation(user)
+    }
+
+    fun startNewConversation(user: User) {
+        var resolvedId = "dm_${user.id}"
         _directMessages.update { list ->
             val existing = list.indexOfFirst { it.user.id == user.id || it.user.username == user.username }
             if (existing >= 0) {
-                val thread = list[existing]
+                val thread = list[existing].copy(
+                    unreadCount = 0,
+                    messages = list[existing].messages.map { msg ->
+                        if (!msg.isFromMe) msg.copy(status = MessageDeliveryStatus.SEEN) else msg
+                    }
+                )
+                resolvedId = thread.id
                 listOf(thread) + list.filterIndexed { i, _ -> i != existing }
             } else {
                 listOf(
                     DirectMessage(
-                        id = "dm_${user.id}",
+                        id = resolvedId,
                         user = user,
                         lastMessage = "Say hi to @${user.username} 👋",
                         timestamp = "Now",
                         unreadCount = 0,
-                        isOnline = true
+                        isOnline = true,
+                        lastSeenText = "Active now",
+                        messages = emptyList()
                     )
                 ) + list
             }
         }
+        _activeChatId.value = resolvedId
         _showDirectMessages.value = true
+    }
+
+    fun openChat(conversationId: String) {
+        _activeChatId.value = conversationId
+        _directMessages.update { list ->
+            list.map { dm ->
+                if (dm.id == conversationId) {
+                    dm.copy(
+                        unreadCount = 0,
+                        messages = dm.messages.map { msg ->
+                            if (!msg.isFromMe) msg.copy(status = MessageDeliveryStatus.SEEN) else msg
+                        }
+                    )
+                } else dm
+            }
+        }
+    }
+
+    fun closeChat() {
+        _activeChatId.value = null
     }
 
     fun shareProfile(user: User) {
@@ -403,6 +446,9 @@ class InstagramViewModel(
 
     fun setShowDirectMessages(show: Boolean) {
         _showDirectMessages.value = show
+        if (!show) {
+            _activeChatId.value = null
+        }
     }
 
     fun setShowNotifications(show: Boolean) {
@@ -576,13 +622,26 @@ class InstagramViewModel(
                 fullName = story.username,
                 avatarUrl = story.userAvatar
             )
+        val chatMessage = ChatMessage(
+            id = "msg_story_${UUID.randomUUID()}",
+            senderId = currentUser.value.id,
+            text = messageText,
+            mediaUri = story.mediaUrls.firstOrNull(),
+            mediaType = if (story.mediaUrls.isNotEmpty()) ChatMediaType.IMAGE else null,
+            thumbnailUrl = story.mediaUrls.firstOrNull(),
+            timestamp = "Just now",
+            status = MessageDeliveryStatus.DELIVERED,
+            isFromMe = true
+        )
         _directMessages.update { list ->
             val existingIndex = list.indexOfFirst { it.user.id == story.userId || it.user.username == story.username }
             if (existingIndex >= 0) {
-                val updated = list[existingIndex].copy(
+                val existing = list[existingIndex]
+                val updated = existing.copy(
                     lastMessage = messageText,
                     timestamp = "Just now",
-                    unreadCount = 0
+                    unreadCount = 0,
+                    messages = existing.messages + chatMessage
                 )
                 listOf(updated) + list.filterIndexed { index, _ -> index != existingIndex }
             } else {
@@ -593,11 +652,176 @@ class InstagramViewModel(
                         lastMessage = messageText,
                         timestamp = "Just now",
                         unreadCount = 0,
-                        isOnline = true
+                        isOnline = true,
+                        lastSeenText = "Active now",
+                        messages = listOf(chatMessage)
                     )
                 ) + list
             }
         }
+    }
+
+    fun sendChatMessage(
+        conversationId: String,
+        text: String = "",
+        mediaUri: String? = null,
+        mediaType: ChatMediaType? = null,
+        thumbnailUrl: String? = null
+    ) {
+        val trimmed = text.trim()
+        if (trimmed.isEmpty() && mediaUri.isNullOrBlank()) return
+
+        val messageId = "msg_${UUID.randomUUID()}"
+        val timestampLabel = formatCurrentChatTime()
+        val newMessage = ChatMessage(
+            id = messageId,
+            senderId = currentUser.value.id,
+            text = trimmed,
+            mediaUri = mediaUri,
+            mediaType = mediaType,
+            thumbnailUrl = thumbnailUrl ?: mediaUri,
+            timestamp = timestampLabel,
+            status = MessageDeliveryStatus.SENT,
+            isFromMe = true
+        )
+
+        val previewText = when {
+            trimmed.isNotEmpty() -> "You: $trimmed"
+            mediaType == ChatMediaType.VIDEO -> "You sent a video"
+            mediaType == ChatMediaType.IMAGE -> "You sent a photo"
+            else -> "You sent a message"
+        }
+
+        var targetThread: DirectMessage? = null
+        _directMessages.update { list ->
+            val index = list.indexOfFirst { it.id == conversationId }
+            if (index < 0) return@update list
+            val existing = list[index]
+            val updated = existing.copy(
+                lastMessage = previewText,
+                timestamp = "Just now",
+                unreadCount = 0,
+                messages = existing.messages + newMessage
+            )
+            targetThread = updated
+            listOf(updated) + list.filterIndexed { i, _ -> i != index }
+        }
+
+        val thread = targetThread ?: return
+        chatSimulationJobs[conversationId]?.cancel()
+        chatSimulationJobs[conversationId] = viewModelScope.launch {
+            kotlinx.coroutines.delay(350)
+            updateMessageDeliveryStatus(conversationId, messageId, MessageDeliveryStatus.DELIVERED)
+
+            if (thread.isOnline) {
+                kotlinx.coroutines.delay(450)
+                updateMessageDeliveryStatus(conversationId, messageId, MessageDeliveryStatus.SEEN)
+
+                if (trimmed.isNotEmpty() || mediaUri != null) {
+                    setConversationTyping(conversationId, true)
+                    kotlinx.coroutines.delay(950)
+                    setConversationTyping(conversationId, false)
+
+                    val replyText = buildContextualReply(thread.user, trimmed, mediaType)
+                    val isCurrentlyViewing = _showDirectMessages.value && _activeChatId.value == conversationId
+                    val replyMessage = ChatMessage(
+                        id = "msg_reply_${UUID.randomUUID()}",
+                        senderId = thread.user.id,
+                        text = replyText,
+                        timestamp = formatCurrentChatTime(),
+                        status = if (isCurrentlyViewing) MessageDeliveryStatus.SEEN else MessageDeliveryStatus.DELIVERED,
+                        isFromMe = false
+                    )
+                    _directMessages.update { list ->
+                        val idx = list.indexOfFirst { it.id == conversationId }
+                        if (idx < 0) return@update list
+                        val dm = list[idx]
+                        val updated = dm.copy(
+                            lastMessage = replyText,
+                            timestamp = "Just now",
+                            isTyping = false,
+                            unreadCount = if (isCurrentlyViewing) 0 else dm.unreadCount + 1,
+                            messages = dm.messages + replyMessage
+                        )
+                        listOf(updated) + list.filterIndexed { i, _ -> i != idx }
+                    }
+                }
+            }
+        }
+    }
+
+    fun toggleMessageReaction(conversationId: String, messageId: String, emoji: String) {
+        val myId = currentUser.value.id
+        _directMessages.update { list ->
+            list.map { dm ->
+                if (dm.id != conversationId) dm
+                else {
+                    dm.copy(
+                        messages = dm.messages.map { msg ->
+                            if (msg.id != messageId) msg
+                            else {
+                                val updatedReactions = if (msg.reactions[myId] == emoji) {
+                                    msg.reactions - myId
+                                } else {
+                                    msg.reactions + (myId to emoji)
+                                }
+                                msg.copy(reactions = updatedReactions)
+                            }
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    private fun updateMessageDeliveryStatus(
+        conversationId: String,
+        messageId: String,
+        status: MessageDeliveryStatus
+    ) {
+        _directMessages.update { list ->
+            list.map { dm ->
+                if (dm.id != conversationId) dm
+                else dm.copy(
+                    messages = dm.messages.map { msg ->
+                        if (msg.id == messageId) msg.copy(status = status) else msg
+                    }
+                )
+            }
+        }
+    }
+
+    private fun setConversationTyping(conversationId: String, isTyping: Boolean) {
+        _directMessages.update { list ->
+            list.map { dm ->
+                if (dm.id == conversationId) dm.copy(isTyping = isTyping) else dm
+            }
+        }
+    }
+
+    private fun buildContextualReply(
+        sender: User,
+        outgoingText: String,
+        mediaType: ChatMediaType?
+    ): String {
+        val lower = outgoingText.lowercase()
+        return when {
+            mediaType == ChatMediaType.VIDEO -> "Love that clip! The motion and framing look super crisp 🎬✨"
+            mediaType == ChatMediaType.IMAGE -> "Such a clean shot! The lighting really pops 📸🔥"
+            lower.contains("hello") || lower.contains("hi") || lower.contains("hey") ->
+                "Hey! Great to hear from you — working on anything fun today?"
+            lower.contains("photowalk") || lower.contains("meet") || lower.contains("tomorrow") ->
+                "Yes! Let's meet near the waterfront right around golden hour 🌇"
+            lower.contains("?") ->
+                "Definitely! Give me two minutes and I'll send over the full details."
+            else ->
+                "Totally agree with you 🙌 Let's collaborate on a shoot soon!"
+        }
+    }
+
+    private fun formatCurrentChatTime(): String {
+        val formatter = java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault())
+        return formatter.format(java.util.Date())
     }
 
     fun toggleLikePost(postId: String) {
@@ -852,10 +1076,26 @@ class InstagramViewModel(
         }
         if (recipient != null) {
             val preview = "Shared a reel by @${reel.user.username}"
+            val reelChatMessage = ChatMessage(
+                id = "msg_reel_${UUID.randomUUID()}",
+                senderId = currentUser.value.id,
+                text = preview,
+                mediaUri = reel.videoUrl.ifBlank { reel.mediaUrl },
+                mediaType = if (reel.videoUrl.isNotBlank()) ChatMediaType.VIDEO else ChatMediaType.IMAGE,
+                thumbnailUrl = reel.mediaUrl,
+                timestamp = "Just now",
+                status = MessageDeliveryStatus.DELIVERED,
+                isFromMe = true
+            )
             _directMessages.update { list ->
                 val idx = list.indexOfFirst { it.user.id == recipient.id || it.user.username == recipient.username }
                 if (idx >= 0) {
-                    val updated = list[idx].copy(lastMessage = preview, timestamp = "Just now")
+                    val existing = list[idx]
+                    val updated = existing.copy(
+                        lastMessage = preview,
+                        timestamp = "Just now",
+                        messages = existing.messages + reelChatMessage
+                    )
                     listOf(updated) + list.filterIndexed { i, _ -> i != idx }
                 } else {
                     listOf(
@@ -864,7 +1104,9 @@ class InstagramViewModel(
                             user = recipient,
                             lastMessage = preview,
                             timestamp = "Just now",
-                            isOnline = true
+                            isOnline = true,
+                            lastSeenText = "Active now",
+                            messages = listOf(reelChatMessage)
                         )
                     ) + list
                 }

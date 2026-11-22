@@ -470,4 +470,73 @@ class InstagramViewModelTest {
         viewModel.selectTab(NavigationTab.PROFILE)
         assertNull(viewModel.viewedProfileUser.value)
     }
+
+    @Test
+    fun testDirectMessagingOpenSendMediaReactAndReadReceipts() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            viewModel.activeChatThread.collect {}
+        }
+        val firstConversation = viewModel.directMessages.value.first { it.unreadCount > 0 }
+
+        // Opening chat clears unreadCount and marks incoming messages as SEEN
+        viewModel.openChat(firstConversation.id)
+        val openedThread = viewModel.activeChatThread.value
+        assertNotNull(openedThread)
+        assertEquals(firstConversation.id, openedThread?.id)
+        assertEquals(0, openedThread?.unreadCount)
+        assertTrue(
+            openedThread?.messages?.filter { !it.isFromMe }?.all {
+                it.status == com.example.model.MessageDeliveryStatus.SEEN
+            } == true
+        )
+
+        val initialCount = openedThread?.messages?.size ?: 0
+
+        // Send a text message
+        viewModel.sendChatMessage(firstConversation.id, text = "See you at golden hour!")
+        val afterText = viewModel.directMessages.value.first { it.id == firstConversation.id }
+        assertEquals(initialCount + 1, afterText.messages.size)
+        val sentTextMsg = afterText.messages.last()
+        assertEquals("See you at golden hour!", sentTextMsg.text)
+        assertTrue(sentTextMsg.isFromMe)
+        assertTrue(sentTextMsg.timestamp.isNotBlank())
+        assertEquals("You: See you at golden hour!", afterText.lastMessage)
+
+        // Toggle emoji reaction on that message
+        viewModel.toggleMessageReaction(firstConversation.id, sentTextMsg.id, "🔥")
+        val afterReact = viewModel.directMessages.value.first { it.id == firstConversation.id }
+        assertEquals("🔥", afterReact.messages.last().reactions[viewModel.currentUser.value.id])
+
+        // Toggle same emoji again removes reaction
+        viewModel.toggleMessageReaction(firstConversation.id, sentTextMsg.id, "🔥")
+        val afterUnreact = viewModel.directMessages.value.first { it.id == firstConversation.id }
+        assertFalse(afterUnreact.messages.last().reactions.containsKey(viewModel.currentUser.value.id))
+
+        // Send image and video attachments
+        viewModel.sendChatMessage(
+            conversationId = firstConversation.id,
+            mediaUri = "https://example.com/photo.jpg",
+            mediaType = com.example.model.ChatMediaType.IMAGE
+        )
+        viewModel.sendChatMessage(
+            conversationId = firstConversation.id,
+            mediaUri = "https://example.com/video.mp4",
+            mediaType = com.example.model.ChatMediaType.VIDEO
+        )
+        val afterMedia = viewModel.directMessages.value.first { it.id == firstConversation.id }
+        assertEquals(initialCount + 3, afterMedia.messages.size)
+        assertEquals(com.example.model.ChatMediaType.IMAGE, afterMedia.messages[initialCount + 1].mediaType)
+        assertEquals(com.example.model.ChatMediaType.VIDEO, afterMedia.messages[initialCount + 2].mediaType)
+        assertEquals("You sent a video", afterMedia.lastMessage)
+
+        // Close chat clears activeChatId
+        viewModel.closeChat()
+        assertNull(viewModel.activeChatId.value)
+
+        // Starting a new conversation with chef_clara creates & opens the thread
+        val newRecipient = com.example.data.SampleData.sampleUsers.last()
+        viewModel.startNewConversation(newRecipient)
+        assertTrue(viewModel.showDirectMessages.value)
+        assertEquals("dm_${newRecipient.id}", viewModel.activeChatId.value)
+    }
 }

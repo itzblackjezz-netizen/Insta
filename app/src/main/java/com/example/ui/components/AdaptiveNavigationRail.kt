@@ -29,6 +29,7 @@ fun AdaptiveNavigationRail(
     onOpenNotifications: () -> Unit,
     onOpenMessages: () -> Unit,
     hasUnreadNotifications: Boolean = false,
+    unreadMessagesCount: Int = 0,
     modifier: Modifier = Modifier
 ) {
     NavigationRail(
@@ -114,10 +115,18 @@ fun AdaptiveNavigationRail(
                     selected = false,
                     onClick = onOpenMessages,
                     icon = {
-                        Icon(
-                            imageVector = Icons.Outlined.Send,
-                            contentDescription = "Messages"
-                        )
+                        BadgedBox(
+                            badge = {
+                                if (unreadMessagesCount > 0) {
+                                    Badge { Text("$unreadMessagesCount") }
+                                }
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Send,
+                                contentDescription = "Messages"
+                            )
+                        }
                     },
                     label = { Text("Messages", fontSize = 11.sp) },
                     modifier = Modifier.testTag("rail_nav_messages")

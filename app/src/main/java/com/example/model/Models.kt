@@ -92,13 +92,40 @@ data class NotificationItem(
     val isRead: Boolean = false
 )
 
+enum class MessageDeliveryStatus {
+    SENT,
+    DELIVERED,
+    SEEN
+}
+
+enum class ChatMediaType {
+    IMAGE,
+    VIDEO
+}
+
+data class ChatMessage(
+    val id: String,
+    val senderId: String,
+    val text: String = "",
+    val mediaUri: String? = null,
+    val mediaType: ChatMediaType? = null,
+    val thumbnailUrl: String? = null,
+    val timestamp: String,
+    val reactions: Map<String, String> = emptyMap(), // userId -> emoji
+    val status: MessageDeliveryStatus = MessageDeliveryStatus.SENT,
+    val isFromMe: Boolean = false
+)
+
 data class DirectMessage(
     val id: String,
     val user: User,
     val lastMessage: String,
     val timestamp: String,
     val unreadCount: Int = 0,
-    val isOnline: Boolean = false
+    val isOnline: Boolean = false,
+    val lastSeenText: String = if (isOnline) "Active now" else "Active recently",
+    val isTyping: Boolean = false,
+    val messages: List<ChatMessage> = emptyList()
 )
 
 data class StoryHighlight(
