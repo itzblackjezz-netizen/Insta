@@ -27,6 +27,7 @@ import com.example.model.Post
 import com.example.model.Story
 import com.example.model.User
 import com.example.ui.components.PostCard
+import com.example.ui.components.PostCardSkeleton
 import com.example.ui.components.StoriesTray
 import com.example.ui.theme.IgBlue
 
@@ -120,25 +121,35 @@ fun HomeScreen(
                 }
             }
 
-            // Feed Posts
-            items(posts, key = { it.id }) { post ->
-                PostCard(
-                    post = post,
-                    onLikeClick = { onLikeClick(post.id) },
-                    onDoubleTapLike = { onDoubleTapLike(post.id) },
-                    onCommentClick = { onCommentClick(post) },
-                    onShareClick = { onShareClick(post) },
-                    onSaveClick = { onSaveClick(post.id) },
-                    onOptionsClick = { onOptionsClick(post) },
-                    onAiInsightsClick = { onAiInsightsClick(post) },
-                    onUserClick = { onUserClick(post.user) },
-                    onAddQuickComment = { text -> onAddQuickComment(post.id, text) },
-                    onLikeComment = { commentId -> onLikeComment(post.id, commentId) },
-                    onReplyComment = { parent, text -> onReplyComment(post.id, parent, text) },
-                    modifier = Modifier
-                        .widthIn(max = 600.dp)
-                        .fillMaxWidth()
-                )
+            // Feed Posts or Skeletons
+            if (posts.isEmpty() || isRefreshing) {
+                items(2) {
+                    PostCardSkeleton(
+                        modifier = Modifier
+                            .widthIn(max = 600.dp)
+                            .fillMaxWidth()
+                    )
+                }
+            } else {
+                items(posts, key = { it.id }) { post ->
+                    PostCard(
+                        post = post,
+                        onLikeClick = { onLikeClick(post.id) },
+                        onDoubleTapLike = { onDoubleTapLike(post.id) },
+                        onCommentClick = { onCommentClick(post) },
+                        onShareClick = { onShareClick(post) },
+                        onSaveClick = { onSaveClick(post.id) },
+                        onOptionsClick = { onOptionsClick(post) },
+                        onAiInsightsClick = { onAiInsightsClick(post) },
+                        onUserClick = { onUserClick(post.user) },
+                        onAddQuickComment = { text -> onAddQuickComment(post.id, text) },
+                        onLikeComment = { commentId -> onLikeComment(post.id, commentId) },
+                        onReplyComment = { parent, text -> onReplyComment(post.id, parent, text) },
+                        modifier = Modifier
+                            .widthIn(max = 600.dp)
+                            .fillMaxWidth()
+                    )
+                }
             }
 
             // Loading more spinner at bottom of feed
