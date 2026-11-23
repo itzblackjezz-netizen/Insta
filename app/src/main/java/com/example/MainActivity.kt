@@ -116,9 +116,7 @@ class MainActivity : ComponentActivity() {
                         factory = viewModelFactory {
                             initializer {
                                 val app = checkNotNull(this[APPLICATION_KEY])
-                                val db = FirebaseFirestore.getInstance(
-                                    app.getString(R.string.firestore_database_id)
-                                )
+                                val db = com.example.firebase.getSafeFirestoreInstance(app)
                                 InstagramViewModel(
                                     repository = InstagramRepository(db),
                                     aiService = GeminiAiService(),

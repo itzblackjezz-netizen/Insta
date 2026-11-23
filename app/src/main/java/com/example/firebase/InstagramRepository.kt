@@ -76,11 +76,7 @@ class InstagramRepository(
     private val auth: FirebaseAuth = Firebase.auth,
     private val storage: FirebaseStorage = Firebase.storage
 ) : SocialDataSource {
-    constructor(context: Context) : this(
-        FirebaseFirestore.getInstance(
-            context.applicationContext.getString(R.string.firestore_database_id)
-        )
-    )
+    constructor(context: Context) : this(getSafeFirestoreInstance(context))
 
     private fun requireUserId(): String {
         return auth.currentUser?.uid
@@ -526,5 +522,22 @@ class InstagramRepository(
             handleFirestoreError(e, OperationType.CREATE, docPath)
             Result.failure(e)
         }
+    }
+}
+
+fun getSafeFirestoreInstance(context: Context): FirebaseFirestore {
+    return try {
+        val dbId = context.applicationContext.getString(R.string.firestore_database_id).trim()
+        if (dbId.isEmpty() || dbId == "(default)" || dbId.startsWith("ai-studio-")) {
+            FirebaseFirestore.getInstance()
+        } else {
+            try {
+                FirebaseFirestore.getInstance(dbId)
+            } catch (_: Exception) {
+                FirebaseFirestore.getInstance()
+            }
+        }
+    } catch (_: Exception) {
+        FirebaseFirestore.getInstance()
     }
 }
