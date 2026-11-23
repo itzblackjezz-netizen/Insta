@@ -2,6 +2,7 @@ package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -16,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.GridOn
@@ -33,14 +35,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.CachePolicy
+import coil.request.ImageRequest
 import com.example.data.SampleData
 import com.example.model.Post
 import com.example.model.Reel
@@ -94,10 +100,11 @@ fun ProfileScreen(
 
     var selectedSubTab by remember(user.id) { mutableStateOf(ProfileSubTab.GRID) }
     var showSettingsSheet by remember { mutableStateOf(false) }
-    var showDiscoverStrip by remember(user.id) { mutableStateOf(false) }
+    var showDiscoverStrip by remember(user.id) { mutableStateOf(true) }
     var connectionsSheetTitle by remember { mutableStateOf<String?>(null) }
     var showAvatarPreview by remember { mutableStateOf(false) }
 
+    val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val clipboardManager = LocalClipboardManager.current
 
@@ -368,9 +375,10 @@ fun ProfileScreen(
                                 onClick = onEditProfileClick,
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(38.dp)
+                                    .minimumInteractiveComponentSize()
+                                    .height(40.dp)
                                     .testTag("edit_profile_button"),
-                                shape = RoundedCornerShape(8.dp),
+                                shape = RoundedCornerShape(10.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
                                     contentColor = MaterialTheme.colorScheme.onSurface
@@ -390,9 +398,10 @@ fun ProfileScreen(
                                 },
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(38.dp)
+                                    .minimumInteractiveComponentSize()
+                                    .height(40.dp)
                                     .testTag("share_profile_button"),
-                                shape = RoundedCornerShape(8.dp),
+                                shape = RoundedCornerShape(10.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
                                     contentColor = MaterialTheme.colorScheme.onSurface
@@ -407,8 +416,9 @@ fun ProfileScreen(
 
                             Surface(
                                 modifier = Modifier
-                                    .size(38.dp)
-                                    .clip(RoundedCornerShape(8.dp)),
+                                    .size(40.dp)
+                                    .minimumInteractiveComponentSize()
+                                    .clip(RoundedCornerShape(10.dp)),
                                 color = if (showDiscoverStrip) IgBlue.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceVariant
                             ) {
                                 IconButton(
@@ -424,19 +434,43 @@ fun ProfileScreen(
                                 }
                             }
                         } else {
+                            val followBgColor by animateColorAsState(
+                                targetValue = if (isFollowingUser) {
+                                    MaterialTheme.colorScheme.surfaceVariant
+                                } else {
+                                    IgBlue
+                                },
+                                label = "follow_bg"
+                            )
+                            val followTextColor by animateColorAsState(
+                                targetValue = if (isFollowingUser) {
+                                    MaterialTheme.colorScheme.onSurface
+                                } else {
+                                    Color.White
+                                },
+                                label = "follow_text"
+                            )
+
                             Button(
                                 onClick = onToggleFollow,
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(38.dp)
+                                    .minimumInteractiveComponentSize()
+                                    .height(40.dp)
                                     .testTag("profile_follow_button"),
-                                shape = RoundedCornerShape(8.dp),
+                                shape = RoundedCornerShape(10.dp),
                                 colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isFollowingUser) MaterialTheme.colorScheme.surfaceVariant else IgBlue,
-                                    contentColor = if (isFollowingUser) MaterialTheme.colorScheme.onSurface else Color.White
+                                    containerColor = followBgColor,
+                                    contentColor = followTextColor
                                 ),
-                                contentPadding = PaddingValues(0.dp)
+                                contentPadding = PaddingValues(horizontal = 12.dp)
                             ) {
+                                Icon(
+                                    imageVector = if (isFollowingUser) Icons.Default.Check else Icons.Default.PersonAdd,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text(
                                     text = if (isFollowingUser) "Following" else "Follow",
                                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
@@ -447,9 +481,10 @@ fun ProfileScreen(
                                 onClick = onMessageClick,
                                 modifier = Modifier
                                     .weight(1f)
-                                    .height(38.dp)
+                                    .minimumInteractiveComponentSize()
+                                    .height(40.dp)
                                     .testTag("profile_message_button"),
-                                shape = RoundedCornerShape(8.dp),
+                                shape = RoundedCornerShape(10.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = MaterialTheme.colorScheme.surfaceVariant,
                                     contentColor = MaterialTheme.colorScheme.onSurface
@@ -756,16 +791,28 @@ fun ProfileScreen(
                                 horizontalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
                                 rowPosts.forEach { post ->
+                                    val tileRequest = remember(context, post.mediaUrls.firstOrNull()) {
+                                        ImageRequest.Builder(context)
+                                            .data(post.mediaUrls.firstOrNull() ?: "")
+                                            .crossfade(150)
+                                            .memoryCachePolicy(CachePolicy.ENABLED)
+                                            .diskCachePolicy(CachePolicy.ENABLED)
+                                            .build()
+                                    }
                                     Box(
                                         modifier = Modifier
                                             .weight(1f)
                                             .aspectRatio(1f)
-                                            .clickable { onPostClick(post) }
+                                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                                            .clickable(
+                                                role = Role.Button,
+                                                onClickLabel = "Open post by ${post.user.username}"
+                                            ) { onPostClick(post) }
                                             .testTag("profile_grid_tile_${post.id}")
                                     ) {
                                         AsyncImage(
-                                            model = post.mediaUrls.firstOrNull() ?: "",
-                                            contentDescription = "Post by ${post.user.username}",
+                                            model = tileRequest,
+                                            contentDescription = "Post by ${post.user.username}: ${post.caption}",
                                             modifier = Modifier.fillMaxSize(),
                                             contentScale = ContentScale.Crop
                                         )

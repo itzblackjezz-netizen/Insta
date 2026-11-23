@@ -1328,8 +1328,18 @@ class InstagramViewModel(
     }
 
     fun toggleFollowUser(userId: String) {
+        val targetUser = SampleData.sampleUsers.firstOrNull { it.id == userId }
+        val currentState = _followedUsersOverride.value[userId] ?: (targetUser?.isFollowing ?: false)
+        val nextState = !currentState
         _followedUsersOverride.update { current ->
-            current + (userId to !(current[userId] ?: true))
+            current + (userId to nextState)
+        }
+        targetUser?.let { user ->
+            _snackbarMessage.value = if (nextState) {
+                "Following @${user.username}"
+            } else {
+                "Unfollowed @${user.username}"
+            }
         }
     }
 

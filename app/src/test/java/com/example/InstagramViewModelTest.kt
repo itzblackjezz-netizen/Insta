@@ -756,4 +756,21 @@ class InstagramViewModelTest {
         assertTrue(newReel.videoUrl.startsWith("https://firebasestorage.googleapis.com/"))
         assertTrue(newReel.videoUrl.endsWith(".mp4?alt=media"))
     }
+
+    @Test
+    fun testProfileFollowAndUnfollowInteraction() {
+        val creator = com.example.data.SampleData.sampleUsers.first { !it.isFollowing }
+        viewModel.openUserProfile(creator)
+        assertEquals(NavigationTab.PROFILE, viewModel.currentTab.value)
+        assertEquals(creator.id, viewModel.viewedProfileUser.value?.id)
+        assertEquals(false, viewModel.followedUsers.value[creator.id])
+
+        viewModel.toggleFollowUser(creator.id)
+        assertEquals(true, viewModel.followedUsers.value[creator.id])
+        assertEquals("Following @${creator.username}", viewModel.snackbarMessage.value)
+
+        viewModel.toggleFollowUser(creator.id)
+        assertEquals(false, viewModel.followedUsers.value[creator.id])
+        assertEquals("Unfollowed @${creator.username}", viewModel.snackbarMessage.value)
+    }
 }

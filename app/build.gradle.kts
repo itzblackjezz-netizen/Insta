@@ -71,6 +71,12 @@ android {
           "https://maven-central.storage-download.googleapis.com/maven2"
         )
         it.systemProperty("robolectric.dependency.repo.id", "mavenCentralGoogleMirror")
+        it.testLogging {
+          exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+          showExceptions = true
+          showCauses = true
+          showStackTraces = true
+        }
       }
     }
   }
