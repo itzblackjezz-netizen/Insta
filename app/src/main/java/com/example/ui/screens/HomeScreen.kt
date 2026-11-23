@@ -64,8 +64,8 @@ fun HomeScreen(
         }
     }
 
-    LaunchedEffect(shouldLoadMore) {
-        if (shouldLoadMore && !isLoadingMore) {
+    LaunchedEffect(shouldLoadMore, isRefreshing, isLoadingMore) {
+        if (shouldLoadMore && !isLoadingMore && !isRefreshing) {
             onLoadMore()
         }
     }
@@ -80,7 +80,9 @@ fun HomeScreen(
                 isRefreshing = isRefreshing,
                 containerColor = MaterialTheme.colorScheme.surface,
                 color = IgBlue,
-                modifier = Modifier.align(Alignment.TopCenter)
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .testTag("home_refresh_indicator")
             )
         },
         modifier = modifier
@@ -88,20 +90,20 @@ fun HomeScreen(
             .background(MaterialTheme.colorScheme.background)
             .testTag("home_pull_to_refresh")
     ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.TopCenter
+        LazyColumn(
+            state = listState,
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier
+                .fillMaxSize()
+                .testTag("home_feed_list")
         ) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxHeight()
-                    .widthIn(max = 600.dp)
-                    .fillMaxWidth()
-                    .testTag("home_feed_list")
-            ) {
-                // Stories Tray at Top
-                item {
+            // Stories Tray at Top
+            item {
+                Column(
+                    modifier = Modifier
+                        .widthIn(max = 600.dp)
+                        .fillMaxWidth()
+                ) {
                     StoriesTray(
                         currentUser = currentUser,
                         stories = stories,
@@ -113,53 +115,58 @@ fun HomeScreen(
                         thickness = 0.5.dp
                     )
                 }
+            }
 
-                // Feed Posts
-                items(posts, key = { it.id }) { post ->
-                    PostCard(
-                        post = post,
-                        onLikeClick = { onLikeClick(post.id) },
-                        onDoubleTapLike = { onDoubleTapLike(post.id) },
-                        onCommentClick = { onCommentClick(post) },
-                        onShareClick = { onShareClick(post) },
-                        onSaveClick = { onSaveClick(post.id) },
-                        onOptionsClick = { onOptionsClick(post) },
-                        onAiInsightsClick = { onAiInsightsClick(post) },
-                        onUserClick = { onUserClick(post.user) },
-                        onAddQuickComment = { text -> onAddQuickComment(post.id, text) }
-                    )
-                }
+            // Feed Posts
+            items(posts, key = { it.id }) { post ->
+                PostCard(
+                    post = post,
+                    onLikeClick = { onLikeClick(post.id) },
+                    onDoubleTapLike = { onDoubleTapLike(post.id) },
+                    onCommentClick = { onCommentClick(post) },
+                    onShareClick = { onShareClick(post) },
+                    onSaveClick = { onSaveClick(post.id) },
+                    onOptionsClick = { onOptionsClick(post) },
+                    onAiInsightsClick = { onAiInsightsClick(post) },
+                    onUserClick = { onUserClick(post.user) },
+                    onAddQuickComment = { text -> onAddQuickComment(post.id, text) },
+                    modifier = Modifier
+                        .widthIn(max = 600.dp)
+                        .fillMaxWidth()
+                )
+            }
 
-                // Loading more spinner at bottom of feed
-                if (isLoadingMore) {
-                    item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(24.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(
-                                color = IgBlue,
-                                modifier = Modifier.size(28.dp),
-                                strokeWidth = 2.5.dp
-                            )
-                        }
+            // Loading more spinner at bottom of feed
+            if (isLoadingMore) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .widthIn(max = 600.dp)
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = IgBlue,
+                            modifier = Modifier.size(28.dp),
+                            strokeWidth = 2.5.dp
+                        )
                     }
-                } else {
-                    item {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 32.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = "You're all caught up ✨",
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                }
+            } else {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .widthIn(max = 600.dp)
+                            .fillMaxWidth()
+                            .padding(vertical = 32.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "You're all caught up ✨",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }

@@ -81,6 +81,7 @@ fun ExploreScreen(
     onOptionsPost: (Post) -> Unit = {},
     onAiInsightsPost: (Post) -> Unit = {},
     onAddQuickComment: (String, String) -> Unit = { _, _ -> },
+    onUserClick: (User) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -568,7 +569,7 @@ fun ExploreScreen(
                                         user = account,
                                         isFollowing = isFollowing,
                                         onFollowClick = { onToggleFollowUser(account.id) },
-                                        onAccountClick = { searchQuery = account.username }
+                                        onAccountClick = { onUserClick(account) }
                                     )
                                 }
                             }

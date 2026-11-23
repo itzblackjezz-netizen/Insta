@@ -62,6 +62,7 @@ class InstagramViewModel(
 ) : ViewModel() {
 
     private val _recycledFeedPosts = MutableStateFlow<List<Post>>(emptyList())
+    private val _deletedFeedPostIds = MutableStateFlow<Set<String>>(emptySet())
     private val _followedUsersOverride = MutableStateFlow(
         SampleData.sampleUsers.associate { it.id to it.isFollowing }
     )
@@ -140,51 +141,62 @@ class InstagramViewModel(
             initialValue = emptyList()
         )
 
+    private val feedAdjustments: Flow<Pair<List<Post>, Set<String>>> = combine(
+        _recycledFeedPosts,
+        _deletedFeedPostIds
+    ) { recycledPosts, deletedIds ->
+        recycledPosts to deletedIds
+    }
+
     val posts: StateFlow<List<Post>> = combine(
         currentUser,
         effectiveUserPosts,
         firestorePostStates,
         firestoreUserComments,
-        _recycledFeedPosts
-    ) { user, userPosts, postStates, userComments, recycledPosts ->
+        feedAdjustments
+    ) { user, userPosts, postStates, userComments, (recycledPosts, deletedIds) ->
         val stateByPostId = postStates.associateBy { it.postId }
         val commentsByPostId = userComments.groupBy { it.postId }
 
-        val mappedUserPosts = userPosts.map { fp ->
-            val extraComments = commentsByPostId[fp.id].orEmpty().map { fc ->
-                Comment(
-                    id = fc.id,
-                    username = fc.authorUsername,
-                    userAvatar = fc.authorAvatarUrl,
-                    text = fc.text,
-                    timestamp = "Saved",
-                    likesCount = fc.likesCount.toInt(),
-                    isLiked = fc.liked
+        val mappedUserPosts = userPosts
+            .filterNot { it.id in deletedIds }
+            .map { fp ->
+                val extraComments = commentsByPostId[fp.id].orEmpty().map { fc ->
+                    Comment(
+                        id = fc.id,
+                        username = fc.authorUsername,
+                        userAvatar = fc.authorAvatarUrl,
+                        text = fc.text,
+                        timestamp = "Saved",
+                        likesCount = fc.likesCount.toInt(),
+                        isLiked = fc.liked
+                    )
+                }
+                Post(
+                    id = fp.id,
+                    user = user.copy(
+                        username = fp.authorUsername.ifBlank { user.username },
+                        avatarUrl = fp.authorAvatarUrl.ifBlank { user.avatarUrl }
+                    ),
+                    location = fp.location,
+                    musicTrack = null,
+                    mediaUrls = listOf(fp.imageUrl),
+                    isVideo = false,
+                    likesCount = fp.likesCount.toInt(),
+                    isLiked = fp.liked,
+                    isSaved = fp.saved,
+                    caption = fp.caption,
+                    hashtags = fp.hashtags,
+                    commentsCount = maxOf(fp.commentsCount.toInt(), extraComments.size),
+                    comments = extraComments,
+                    timestamp = "Cloud Post",
+                    aspectRatio = 1.0f
                 )
             }
-            Post(
-                id = fp.id,
-                user = user.copy(
-                    username = fp.authorUsername.ifBlank { user.username },
-                    avatarUrl = fp.authorAvatarUrl.ifBlank { user.avatarUrl }
-                ),
-                location = fp.location,
-                musicTrack = null,
-                mediaUrls = listOf(fp.imageUrl),
-                isVideo = false,
-                likesCount = fp.likesCount.toInt(),
-                isLiked = fp.liked,
-                isSaved = fp.saved,
-                caption = fp.caption,
-                hashtags = fp.hashtags,
-                commentsCount = maxOf(fp.commentsCount.toInt(), extraComments.size),
-                comments = extraComments,
-                timestamp = "Cloud Post",
-                aspectRatio = 1.0f
-            )
-        }
 
-        val curatedFeed = (SampleData.samplePosts + recycledPosts).map { post ->
+        val curatedFeed = (SampleData.samplePosts + recycledPosts)
+            .filterNot { it.id in deletedIds }
+            .map { post ->
             val interaction = stateByPostId[post.id]
             val extraComments = commentsByPostId[post.id].orEmpty().map { fc ->
                 Comment(
@@ -353,7 +365,8 @@ class InstagramViewModel(
     }
 
     private fun isUserAuthoredPost(postId: String): Boolean {
-        return firestoreUserPosts.value.any { it.id == postId }
+        return firestoreUserPosts.value.any { it.id == postId } ||
+            (_manualRefreshedUserPosts.value?.any { it.id == postId } == true)
     }
 
     fun clearSnackbar() {
@@ -1295,6 +1308,29 @@ class InstagramViewModel(
         return regex.findAll(text).map { it.value }.toList()
     }
 
+    fun deletePost(postId: String) {
+        val isCloudPost = isUserAuthoredPost(postId)
+        viewModelScope.launch {
+            if (isCloudPost) {
+                val res = repository.deletePost(currentUserId, postId)
+                res.fold(
+                    onSuccess = {
+                        _manualRefreshedUserPosts.update { list -> list?.filterNot { it.id == postId } }
+                        _deletedFeedPostIds.update { it + postId }
+                        _snackbarMessage.value = "Post deleted"
+                    },
+                    onFailure = { err ->
+                        _snackbarMessage.value = err.localizedMessage ?: "Failed to delete post"
+                    }
+                )
+            } else {
+                _deletedFeedPostIds.update { it + postId }
+                _recycledFeedPosts.update { list -> list.filterNot { it.id == postId } }
+                _snackbarMessage.value = "Post removed from feed"
+            }
+        }
+    }
+
     fun refreshFeed() {
         if (_isRefreshingFeed.value) return
         viewModelScope.launch {
@@ -1304,6 +1340,12 @@ class InstagramViewModel(
                 res.fold(
                     onSuccess = { latestPosts ->
                         _manualRefreshedUserPosts.value = latestPosts
+                        _syncState.value = FirestoreSyncState.Ready
+                        _snackbarMessage.value = if (latestPosts.isNotEmpty()) {
+                            "Feed refreshed (${latestPosts.size} latest ${if (latestPosts.size == 1) "post" else "posts"})"
+                        } else {
+                            "Feed is up to date"
+                        }
                     },
                     onFailure = { err ->
                         _snackbarMessage.value = err.localizedMessage ?: "Failed to refresh feed"

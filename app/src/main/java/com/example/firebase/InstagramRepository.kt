@@ -38,6 +38,7 @@ interface SocialDataSource {
         location: String?,
         hashtags: List<String>
     ): Result<String>
+    suspend fun deletePost(userId: String, postId: String): Result<Unit>
     suspend fun savePostInteraction(
         userId: String,
         postId: String,
@@ -319,6 +320,41 @@ class InstagramRepository(
             throw e
         } catch (e: Exception) {
             handleFirestoreError(e, OperationType.CREATE, docPath)
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun deletePost(userId: String, postId: String): Result<Unit> {
+        val safePostId = postId.replace(Regex("[^a-zA-Z0-9_\\-]"), "_").take(128)
+        val docPath = "users/$userId/posts/$safePostId"
+        return try {
+            val uid = requireUserId()
+            check(uid == userId) { "Signed-in user mismatch" }
+            require(safePostId.isNotEmpty()) { "Post ID cannot be blank" }
+
+            db.collection("users").document(uid).collection("posts").document(safePostId)
+                .delete()
+                .await()
+
+            val userRef = db.collection("users").document(uid)
+            val userSnap = userRef.get().await()
+            if (userSnap.exists()) {
+                val currentCount = userSnap.getLong("postsCount") ?: 0L
+                if (currentCount > 0L) {
+                    userRef.update(
+                        mapOf(
+                            "postsCount" to maxOf(0L, currentCount - 1L),
+                            "updatedAt" to FieldValue.serverTimestamp()
+                        )
+                    ).await()
+                }
+            }
+
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.DELETE, docPath)
             Result.failure(e)
         }
     }

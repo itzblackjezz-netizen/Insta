@@ -498,9 +498,11 @@ fun InstagramApp(
         activeOptionsPost?.let { post ->
             PostOptionsBottomSheet(
                 post = post,
+                isOwnPost = post.user.id == currentUser.id || post.user.username == currentUser.username,
                 onDismiss = { viewModel.closeOptions() },
                 onToggleSave = { viewModel.toggleSavePost(post.id) },
-                onUnfollow = { viewModel.toggleFollowUser(post.user.id) }
+                onUnfollow = { viewModel.toggleFollowUser(post.user.id) },
+                onDeletePost = { viewModel.deletePost(post.id) }
             )
         }
 
@@ -581,7 +583,8 @@ private fun ScreenContent(
                 onSavePost = { postId -> viewModel.toggleSavePost(postId) },
                 onOptionsPost = { post -> viewModel.openOptions(post) },
                 onAiInsightsPost = { post -> viewModel.openAiCompanion(post) },
-                onAddQuickComment = { postId, text -> viewModel.addComment(postId, text) }
+                onAddQuickComment = { postId, text -> viewModel.addComment(postId, text) },
+                onUserClick = { user -> viewModel.openUserProfile(user) }
             )
         }
         NavigationTab.CREATE -> {

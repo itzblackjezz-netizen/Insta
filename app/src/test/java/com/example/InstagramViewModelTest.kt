@@ -116,6 +116,11 @@ private class FakeSocialDataSource : SocialDataSource {
         return Result.success(newId)
     }
 
+    override suspend fun deletePost(userId: String, postId: String): Result<Unit> {
+        userPostsFlow.update { list -> list.filterNot { it.id == postId } }
+        return Result.success(Unit)
+    }
+
     override suspend fun savePostInteraction(
         userId: String,
         postId: String,
@@ -388,6 +393,24 @@ class InstagramViewModelTest {
 
         assertFalse(viewModel.isRefreshingFeed.value)
         assertTrue(viewModel.posts.value.any { it.id == "remote_post_99" })
+        assertEquals("Feed refreshed (1 latest post)", viewModel.snackbarMessage.value)
+    }
+
+    @Test
+    fun testDeleteUserPost() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.posts.collect {} }
+        viewModel.createPost(
+            caption = "Temporary cloud post #cleanup",
+            imageUrl = "https://example.com/temp.jpg",
+            location = "Seattle"
+        )
+        val created = viewModel.posts.value.firstOrNull { it.caption.contains("Temporary cloud post") }
+        assertNotNull(created)
+
+        viewModel.deletePost(created!!.id)
+
+        assertFalse(viewModel.posts.value.any { it.id == created.id })
+        assertEquals("Post deleted", viewModel.snackbarMessage.value)
     }
 
     @Test

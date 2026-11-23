@@ -23,9 +23,11 @@ import com.example.ui.theme.IgRed
 @Composable
 fun PostOptionsBottomSheet(
     post: Post,
+    isOwnPost: Boolean = false,
     onDismiss: () -> Unit,
     onToggleSave: () -> Unit,
     onUnfollow: () -> Unit,
+    onDeletePost: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val sheetState = rememberModalBottomSheetState()
@@ -113,26 +115,42 @@ fun PostOptionsBottomSheet(
                 title = "Share to...",
                 onClick = onDismiss
             )
-            OptionRowItem(
-                icon = Icons.Outlined.PersonRemove,
-                title = "Unfollow @${post.user.username}",
-                onClick = {
-                    onUnfollow()
-                    onDismiss()
-                }
-            )
+            if (!isOwnPost) {
+                OptionRowItem(
+                    icon = Icons.Outlined.PersonRemove,
+                    title = "Unfollow @${post.user.username}",
+                    onClick = {
+                        onUnfollow()
+                        onDismiss()
+                    }
+                )
+            }
             OptionRowItem(
                 icon = Icons.Outlined.NotificationsOff,
                 title = "Mute",
                 onClick = onDismiss
             )
-            OptionRowItem(
-                icon = Icons.Outlined.Report,
-                title = "Report",
-                textColor = IgRed,
-                iconTint = IgRed,
-                onClick = onDismiss
-            )
+            if (isOwnPost) {
+                OptionRowItem(
+                    icon = Icons.Outlined.Delete,
+                    title = "Delete post",
+                    textColor = IgRed,
+                    iconTint = IgRed,
+                    onClick = {
+                        onDeletePost()
+                        onDismiss()
+                    },
+                    modifier = Modifier.testTag("delete_post_option")
+                )
+            } else {
+                OptionRowItem(
+                    icon = Icons.Outlined.Report,
+                    title = "Report",
+                    textColor = IgRed,
+                    iconTint = IgRed,
+                    onClick = onDismiss
+                )
+            }
 
             Spacer(modifier = Modifier.height(12.dp))
         }
@@ -145,10 +163,11 @@ private fun OptionRowItem(
     title: String,
     onClick: () -> Unit,
     textColor: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
-    iconTint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface
+    iconTint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
+    modifier: Modifier = Modifier
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .padding(vertical = 12.dp),
