@@ -1,5 +1,16 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,13 +33,14 @@ import androidx.compose.material.icons.filled.Collections
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.PlayCircleFilled
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tag
-import androidx.compose.material.icons.outlined.AutoAwesome
-import androidx.compose.material.icons.outlined.BookmarkBorder
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,7 +48,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -44,6 +60,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
+import coil.request.CachePolicy
+import coil.request.ImageRequest
 import com.example.data.SampleData
 import com.example.model.Comment
 import com.example.model.Post
@@ -53,6 +71,7 @@ import com.example.ui.theme.IgBlue
 import com.example.ui.theme.IgPink
 import com.example.ui.theme.IgRed
 import com.example.ui.theme.InstagramGradient
+import com.example.ui.viewmodel.FirestoreSyncState
 import java.text.NumberFormat
 import java.util.Locale
 
@@ -69,10 +88,54 @@ private data class PopularHashtagItem(
     val postVolume: String
 )
 
+private val curatedHashtagVolumes = linkedMapOf(
+    "#minimalarchitecture" to "248K",
+    "#tokyo" to "1.4M",
+    "#goldenhour" to "890K",
+    "#editorial" to "412K",
+    "#nordichome" to "185K",
+    "#artisanbread" to "96K",
+    "#streetphotography" to "630K",
+    "#filmphoto" to "310K"
+)
+
+private val hashtagRegex = Regex("#[A-Za-z0-9_]+")
+
+internal fun extractNormalizedHashtags(post: Post): List<String> {
+    val fromList = post.hashtags.mapNotNull { raw ->
+        val trimmed = raw.trim().lowercase()
+        when {
+            trimmed.isEmpty() -> null
+            trimmed.startsWith("#") -> trimmed
+            else -> "#$trimmed"
+        }
+    }
+    val fromCaption = hashtagRegex.findAll(post.caption).map { it.value.lowercase() }.toList()
+    return (fromList + fromCaption).distinct()
+}
+
+private fun inferCategoryForPost(post: Post): String {
+    val combined = (post.caption + " " + post.hashtags.joinToString(" ")).lowercase()
+    return when {
+        combined.contains("architect") || combined.contains("building") || combined.contains("minimal") -> "Architecture"
+        combined.contains("travel") || combined.contains("tokyo") || combined.contains("trip") || combined.contains("coast") -> "Travel"
+        combined.contains("style") || combined.contains("fashion") || combined.contains("editorial") || combined.contains("outfit") -> "Style"
+        combined.contains("film") || combined.contains("analog") || combined.contains("35mm") || combined.contains("goldenhour") -> "Film Photo"
+        combined.contains("interior") || combined.contains("home") || combined.contains("desk") || combined.contains("nordic") -> "Interior"
+        combined.contains("street") || combined.contains("art") || combined.contains("neon") || combined.contains("graffiti") -> "Street Art"
+        combined.contains("food") || combined.contains("coffee") || combined.contains("bread") || combined.contains("espresso") -> "Food & Coffee"
+        else -> "For You"
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExploreScreen(
     feedPosts: List<Post> = SampleData.samplePosts,
     followedUsers: Map<String, Boolean> = emptyMap(),
+    syncState: FirestoreSyncState = FirestoreSyncState.Ready,
+    isRefreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
     onToggleFollowUser: (String) -> Unit = {},
     onLikePost: (String) -> Unit = {},
     onDoubleTapLikePost: (String) -> Unit = {},
@@ -95,18 +158,12 @@ fun ExploreScreen(
     // Local interaction state for discovery-only items not present in main feedPosts
     var discoveryLikes by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
     var discoverySaves by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
+    var dismissedErrorMessage by remember { mutableStateOf<String?>(null) }
 
-    val popularHashtags = remember {
-        listOf(
-            PopularHashtagItem("#minimalarchitecture", "248K"),
-            PopularHashtagItem("#tokyo", "1.4M"),
-            PopularHashtagItem("#goldenhour", "890K"),
-            PopularHashtagItem("#editorial", "412K"),
-            PopularHashtagItem("#nordichome", "185K"),
-            PopularHashtagItem("#artisanbread", "96K"),
-            PopularHashtagItem("#streetphotography", "630K"),
-            PopularHashtagItem("#filmphoto", "310K")
-        )
+    LaunchedEffect(syncState) {
+        if (syncState !is FirestoreSyncState.Error) {
+            dismissedErrorMessage = null
+        }
     }
 
     val suggestedAccounts = remember { SampleData.sampleUsers }
@@ -295,13 +352,48 @@ fun ExploreScreen(
                 ExploreDiscoveryItem(
                     id = post.id,
                     post = post,
-                    category = "For You",
-                    masonryAspectRatio = if (idx % 2 == 0) 0.82f else 1.0f,
+                    category = inferCategoryForPost(post),
+                    masonryAspectRatio = when (idx % 3) {
+                        0 -> 0.78f
+                        1 -> 1.04f
+                        else -> 0.88f
+                    },
                     isTrending = true
                 )
             }
 
         userAuthoredDiscovery + curatedCatalog
+    }
+
+    val popularHashtags = remember(discoveryItems, feedPosts) {
+        val tagCounts = linkedMapOf<String, Int>()
+        // Prioritize hashtags extracted from live Firestore / user-authored posts first
+        feedPosts
+            .filter { it.timestamp == "Cloud Post" || it.timestamp == "Just now" }
+            .forEach { post ->
+                extractNormalizedHashtags(post).forEach { tag ->
+                    tagCounts[tag] = (tagCounts[tag] ?: 0) + 1
+                }
+            }
+        discoveryItems.forEach { item ->
+            extractNormalizedHashtags(item.post).forEach { tag ->
+                if (!tagCounts.containsKey(tag)) {
+                    tagCounts[tag] = 1
+                } else {
+                    tagCounts[tag] = (tagCounts[tag] ?: 0) + 1
+                }
+            }
+        }
+        curatedHashtagVolumes.keys.forEach { curated ->
+            if (!tagCounts.containsKey(curated)) {
+                tagCounts[curated] = 0
+            }
+        }
+        tagCounts.entries.map { (tag, count) ->
+            val volumeLabel = curatedHashtagVolumes[tag]
+                ?: "$count ${if (count == 1) "post" else "posts"}"
+            PopularHashtagItem(tag = tag, postVolume = volumeLabel)
+        }
     }
 
     val queryTrimmed = searchQuery.trim().lowercase()
@@ -352,8 +444,18 @@ fun ExploreScreen(
             maxWidth >= 600.dp -> 3
             else -> 2
         }
+        val pullToRefreshState = rememberPullToRefreshState()
+        val isSyncLoading = syncState is FirestoreSyncState.Loading || isRefreshing
+        val visibleSyncError = (syncState as? FirestoreSyncState.Error)?.takeIf {
+            it.message != dismissedErrorMessage
+        }
 
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .widthIn(max = 1200.dp)
+                .align(Alignment.TopCenter)
+        ) {
             // Sticky Search Bar
             Box(
                 modifier = Modifier
@@ -426,7 +528,11 @@ fun ExploreScreen(
                         shape = RoundedCornerShape(10.dp),
                         color = if (isSelected) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.surfaceVariant,
                         modifier = Modifier
-                            .clickable { selectedCategory = category }
+                            .minimumInteractiveComponentSize()
+                            .clickable(
+                                role = Role.Button,
+                                onClickLabel = "Filter by $category"
+                            ) { selectedCategory = category }
                             .testTag("category_chip_$category")
                     ) {
                         Text(
@@ -442,211 +548,350 @@ fun ExploreScreen(
                 }
             }
 
+            // Active Hashtag Filter Banner
+            AnimatedVisibility(
+                visible = selectedHashtag != null,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                selectedHashtag?.let { activeTag ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 4.dp)
+                            .testTag("active_hashtag_banner"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tag,
+                                contentDescription = null,
+                                tint = IgBlue,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "Filtering by $activeTag",
+                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = IgBlue.copy(alpha = 0.14f),
+                            modifier = Modifier
+                                .minimumInteractiveComponentSize()
+                                .clickable(
+                                    role = Role.Button,
+                                    onClickLabel = "Clear hashtag filter"
+                                ) { selectedHashtag = null }
+                                .testTag("clear_hashtag_filter_button")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "Clear",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = IgBlue
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Clear hashtag filter",
+                                    tint = IgBlue,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Unified Responsive Masonry Staggered Grid
-            LazyVerticalStaggeredGrid(
-                columns = StaggeredGridCells.Fixed(columnCount),
+            // Unified Responsive Masonry Staggered Grid wrapped in Pull-to-Refresh
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = onRefresh,
+                state = pullToRefreshState,
+                indicator = {
+                    PullToRefreshDefaults.Indicator(
+                        state = pullToRefreshState,
+                        isRefreshing = isRefreshing,
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        color = IgBlue,
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .testTag("explore_refresh_indicator")
+                    )
+                },
                 modifier = Modifier
-                    .fillMaxSize()
-                    .testTag("explore_grid"),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
-                verticalItemSpacing = 10.dp,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .testTag("explore_pull_to_refresh")
             ) {
-                // 1. Popular Hashtags Section
-                if (filteredHashtags.isNotEmpty()) {
-                    item(span = StaggeredGridItemSpan.FullLine) {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            ExploreSectionHeader(
-                                title = "Popular Hashtags",
-                                icon = {
-                                    Icon(
-                                        imageVector = Icons.Default.Tag,
-                                        contentDescription = null,
-                                        tint = IgBlue,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
+                LazyVerticalStaggeredGrid(
+                    columns = StaggeredGridCells.Fixed(columnCount),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .testTag("explore_grid"),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                    verticalItemSpacing = 10.dp,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // 0A. Firestore Error State Banner with Retry
+                    if (visibleSyncError != null) {
+                        item(span = StaggeredGridItemSpan.FullLine) {
+                            ExploreErrorBanner(
+                                message = visibleSyncError.message,
+                                onRetry = {
+                                    dismissedErrorMessage = null
+                                    onRefresh()
+                                },
+                                onDismiss = { dismissedErrorMessage = visibleSyncError.message }
                             )
-                            LazyRow(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("popular_hashtags_row"),
-                                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                items(filteredHashtags, key = { it.tag }) { item ->
-                                    val isTagActive = selectedHashtag == item.tag
-                                    Surface(
-                                        shape = RoundedCornerShape(20.dp),
-                                        color = if (isTagActive) IgBlue else MaterialTheme.colorScheme.surfaceVariant,
-                                        modifier = Modifier
-                                            .clickable {
-                                                selectedHashtag = if (isTagActive) null else item.tag
-                                            }
-                                            .testTag("hashtag_pill_${item.tag}")
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Text(
-                                                text = item.tag,
-                                                style = MaterialTheme.typography.labelMedium.copy(
-                                                    fontWeight = FontWeight.SemiBold
-                                                ),
-                                                color = if (isTagActive) Color.White else MaterialTheme.colorScheme.onSurface
-                                            )
-                                            Text(
-                                                text = item.postVolume,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = if (isTagActive) {
-                                                    Color.White.copy(alpha = 0.85f)
-                                                } else {
-                                                    MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    }
+
+                    // 0B. Firestore Syncing Loading Pill
+                    if (isSyncLoading) {
+                        item(span = StaggeredGridItemSpan.FullLine) {
+                            ExploreLoadingStatusRow()
+                        }
+                    }
+
+                    // 1. Popular Hashtags Section
+                    if (filteredHashtags.isNotEmpty()) {
+                        item(span = StaggeredGridItemSpan.FullLine) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                ExploreSectionHeader(
+                                    title = "Popular Hashtags",
+                                    icon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Tag,
+                                            contentDescription = null,
+                                            tint = IgBlue,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                )
+                                LazyRow(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("popular_hashtags_row"),
+                                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    items(filteredHashtags, key = { it.tag }) { item ->
+                                        val isTagActive = selectedHashtag.equals(item.tag, ignoreCase = true)
+                                        Surface(
+                                            shape = RoundedCornerShape(20.dp),
+                                            color = if (isTagActive) IgBlue else MaterialTheme.colorScheme.surfaceVariant,
+                                            modifier = Modifier
+                                                .minimumInteractiveComponentSize()
+                                                .clickable(
+                                                    role = Role.Button,
+                                                    onClickLabel = if (isTagActive) {
+                                                        "Remove ${item.tag} filter"
+                                                    } else {
+                                                        "Filter posts by ${item.tag}"
+                                                    }
+                                                ) {
+                                                    selectedHashtag = if (isTagActive) null else item.tag
                                                 }
-                                            )
+                                                .testTag("hashtag_pill_${item.tag}")
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = item.tag,
+                                                    style = MaterialTheme.typography.labelMedium.copy(
+                                                        fontWeight = FontWeight.SemiBold
+                                                    ),
+                                                    color = if (isTagActive) Color.White else MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Text(
+                                                    text = item.postVolume,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = if (isTagActive) {
+                                                        Color.White.copy(alpha = 0.85f)
+                                                    } else {
+                                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                                    }
+                                                )
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
-                }
 
-                // 2. Trending Posts Carousel
-                if (filteredTrending.isNotEmpty()) {
-                    item(span = StaggeredGridItemSpan.FullLine) {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            ExploreSectionHeader(
-                                title = "Trending Now",
-                                icon = {
-                                    Icon(
-                                        imageVector = Icons.Default.LocalFireDepartment,
-                                        contentDescription = null,
-                                        tint = IgPink,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            )
-                            LazyRow(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("trending_posts_row"),
-                                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                items(filteredTrending.size, key = { idx -> "trend_${filteredTrending[idx].id}" }) { index ->
-                                    val item = filteredTrending[index]
-                                    TrendingPostCard(
-                                        rank = index + 1,
-                                        post = item.post,
-                                        onClick = { selectedPostId = item.id }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // 3. Suggested Accounts Carousel
-                if (filteredAccounts.isNotEmpty()) {
-                    item(span = StaggeredGridItemSpan.FullLine) {
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            ExploreSectionHeader(
-                                title = "Suggested Accounts",
-                                subtitle = "Creators you may like"
-                            )
-                            LazyRow(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("suggested_accounts_row"),
-                                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                items(filteredAccounts, key = { it.id }) { account ->
-                                    val isFollowing = followedUsers[account.id] ?: account.isFollowing
-                                    SuggestedAccountCard(
-                                        user = account,
-                                        isFollowing = isFollowing,
-                                        onFollowClick = { onToggleFollowUser(account.id) },
-                                        onAccountClick = { onUserClick(account) }
-                                    )
+                    // 2. Trending Posts Carousel
+                    if (filteredTrending.isNotEmpty()) {
+                        item(span = StaggeredGridItemSpan.FullLine) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                ExploreSectionHeader(
+                                    title = "Trending Now",
+                                    icon = {
+                                        Icon(
+                                            imageVector = Icons.Default.LocalFireDepartment,
+                                            contentDescription = null,
+                                            tint = IgPink,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                )
+                                LazyRow(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("trending_posts_row"),
+                                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    items(filteredTrending.size, key = { idx -> "trend_${filteredTrending[idx].id}" }) { index ->
+                                        val item = filteredTrending[index]
+                                        TrendingPostCard(
+                                            rank = index + 1,
+                                            post = item.post,
+                                            onClick = { selectedPostId = item.id }
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
-                }
 
-                // 4. Discovery Masonry Section Header
-                item(span = StaggeredGridItemSpan.FullLine) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 6.dp, bottom = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = if (selectedHashtag != null) {
-                                "Discover • $selectedHashtag"
-                            } else {
-                                "Discover Photos & Videos"
-                            },
-                            style = MaterialTheme.typography.titleMedium.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp
-                            ),
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Text(
-                            text = "${filteredMasonryItems.size} posts",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    // 3. Suggested Accounts Carousel
+                    if (filteredAccounts.isNotEmpty()) {
+                        item(span = StaggeredGridItemSpan.FullLine) {
+                            Column(modifier = Modifier.fillMaxWidth()) {
+                                ExploreSectionHeader(
+                                    title = "Suggested Accounts",
+                                    subtitle = "Creators you may like"
+                                )
+                                LazyRow(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("suggested_accounts_row"),
+                                    contentPadding = PaddingValues(horizontal = 2.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    items(filteredAccounts, key = { it.id }) { account ->
+                                        val isFollowing = followedUsers[account.id] ?: account.isFollowing
+                                        SuggestedAccountCard(
+                                            user = account,
+                                            isFollowing = isFollowing,
+                                            onFollowClick = { onToggleFollowUser(account.id) },
+                                            onAccountClick = { onUserClick(account) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
-                }
 
-                // 5. Masonry Discovery Grid Items or Empty State
-                if (filteredMasonryItems.isEmpty()) {
+                    // 4. Discovery Masonry Section Header
                     item(span = StaggeredGridItemSpan.FullLine) {
-                        Column(
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 40.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                                .padding(top = 6.dp, bottom = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(36.dp)
-                            )
                             Text(
-                                text = "No matching posts found",
-                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                text = if (selectedHashtag != null) {
+                                    "Discover • $selectedHashtag"
+                                } else {
+                                    "Discover Photos & Videos"
+                                },
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                                ),
                                 color = MaterialTheme.colorScheme.onBackground
                             )
-                            TextButton(
-                                onClick = {
-                                    searchQuery = ""
-                                    selectedHashtag = null
-                                    selectedCategory = SampleData.exploreCategories[0]
-                                }
-                            ) {
-                                Text("Reset filters", color = IgBlue, fontWeight = FontWeight.Bold)
-                            }
+                            Text(
+                                text = "${filteredMasonryItems.size} posts",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
-                } else {
-                    items(filteredMasonryItems, key = { it.id }) { item ->
-                        MasonryDiscoveryTile(
-                            item = item,
-                            onClick = { selectedPostId = item.id }
-                        )
+
+                    // 5. Masonry Discovery Grid Items, Loading Skeleton, or Empty State
+                    if (filteredMasonryItems.isEmpty() && isSyncLoading) {
+                        val skeletonRatios = listOf(0.75f, 1.05f, 0.85f, 0.72f, 1.12f, 0.82f)
+                        items(skeletonRatios.size, key = { idx -> "skeleton_$idx" }) { idx ->
+                            ExploreMasonrySkeletonTile(aspectRatio = skeletonRatios[idx])
+                        }
+                    } else if (filteredMasonryItems.isEmpty()) {
+                        item(span = StaggeredGridItemSpan.FullLine) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 40.dp)
+                                    .testTag("explore_empty_state"),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                                Text(
+                                    text = if (selectedHashtag != null) {
+                                        "No posts found for $selectedHashtag"
+                                    } else {
+                                        "No matching posts found"
+                                    },
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                                Text(
+                                    text = "Try another hashtag, clear your search, or pull down to refresh from Firestore.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                TextButton(
+                                    onClick = {
+                                        searchQuery = ""
+                                        selectedHashtag = null
+                                        selectedCategory = SampleData.exploreCategories[0]
+                                    },
+                                    modifier = Modifier
+                                        .minimumInteractiveComponentSize()
+                                        .testTag("explore_reset_filters_button")
+                                ) {
+                                    Text("Reset filters", color = IgBlue, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    } else {
+                        items(filteredMasonryItems, key = { it.id }) { item ->
+                            MasonryDiscoveryTile(
+                                item = item,
+                                onClick = { selectedPostId = item.id },
+                                onHashtagClick = { clickedTag ->
+                                    selectedHashtag = if (selectedHashtag.equals(clickedTag, ignoreCase = true)) {
+                                        null
+                                    } else {
+                                        clickedTag
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -700,8 +945,9 @@ private fun matchesQueryAndHashtag(
     query: String,
     selectedHashtag: String?
 ): Boolean {
+    val postTags = extractNormalizedHashtags(post)
     val matchesTag = selectedHashtag == null ||
-        post.hashtags.any { it.equals(selectedHashtag, ignoreCase = true) } ||
+        postTags.any { it.equals(selectedHashtag, ignoreCase = true) } ||
         post.caption.contains(selectedHashtag, ignoreCase = true)
     if (!matchesTag) return false
     if (query.isEmpty()) return true
@@ -710,7 +956,144 @@ private fun matchesQueryAndHashtag(
         post.caption.lowercase().contains(query) ||
         (post.location?.lowercase()?.contains(query) == true) ||
         category.lowercase().contains(query) ||
-        post.hashtags.any { it.lowercase().contains(query) }
+        postTags.any { it.contains(query) }
+}
+
+@Composable
+private fun rememberOptimizedImageRequest(url: String?): ImageRequest {
+    val context = LocalContext.current
+    return remember(context, url) {
+        ImageRequest.Builder(context)
+            .data(url)
+            .crossfade(200)
+            .memoryCachePolicy(CachePolicy.ENABLED)
+            .diskCachePolicy(CachePolicy.ENABLED)
+            .build()
+    }
+}
+
+@Composable
+private fun ExploreLoadingStatusRow() {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("explore_loading_state")
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                strokeWidth = 2.dp,
+                color = IgBlue
+            )
+            Text(
+                text = "Syncing latest posts from Firestore...",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun ExploreErrorBanner(
+    message: String,
+    onRetry: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.errorContainer,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.35f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("explore_error_banner")
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.CloudOff,
+                contentDescription = "Sync error",
+                tint = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.size(20.dp)
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Unable to refresh Firestore Explore",
+                    style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            TextButton(
+                onClick = onRetry,
+                modifier = Modifier
+                    .minimumInteractiveComponentSize()
+                    .testTag("explore_retry_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Refresh,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Retry", fontWeight = FontWeight.Bold)
+            }
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .size(48.dp)
+                    .testTag("explore_dismiss_error_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Dismiss error",
+                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExploreMasonrySkeletonTile(aspectRatio: Float) {
+    val infiniteTransition = rememberInfiniteTransition(label = "explore_skeleton")
+    val alpha by infiniteTransition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.75f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 850),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "skeleton_alpha"
+    )
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(aspectRatio)
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = alpha))
+            .testTag("explore_skeleton_tile")
+    )
 }
 
 @Composable
@@ -759,17 +1142,24 @@ private fun TrendingPostCard(
     val formattedLikes = remember(post.likesCount) {
         NumberFormat.getNumberInstance(Locale.US).format(post.likesCount)
     }
+    val imageRequest = rememberOptimizedImageRequest(post.mediaUrls.firstOrNull())
+    val avatarRequest = rememberOptimizedImageRequest(post.user.avatarUrl)
     Box(
         modifier = Modifier
             .width(196.dp)
             .height(242.dp)
             .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(
+                role = Role.Button,
+                onClickLabel = "Open trending post #$rank by @${post.user.username}",
+                onClick = onClick
+            )
             .testTag("trending_post_${post.id}")
     ) {
         AsyncImage(
-            model = post.mediaUrls.firstOrNull(),
-            contentDescription = "Trending post by ${post.user.username}",
+            model = imageRequest,
+            contentDescription = "Trending post by ${post.user.username}: ${post.caption}",
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop
         )
@@ -832,7 +1222,7 @@ private fun TrendingPostCard(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 AsyncImage(
-                    model = post.user.avatarUrl,
+                    model = avatarRequest,
                     contentDescription = post.user.username,
                     modifier = Modifier
                         .size(24.dp)
@@ -905,10 +1295,11 @@ private fun SuggestedAccountCard(
                     .border(2.dp, InstagramGradient, CircleShape)
                     .padding(3.dp)
                     .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
             ) {
                 AsyncImage(
-                    model = user.avatarUrl,
-                    contentDescription = user.username,
+                    model = rememberOptimizedImageRequest(user.avatarUrl),
+                    contentDescription = "Avatar for ${user.username}",
                     modifier = Modifier.fillMaxSize(),
                     contentScale = ContentScale.Crop
                 )
@@ -979,20 +1370,44 @@ private fun SuggestedAccountCard(
 @Composable
 private fun MasonryDiscoveryTile(
     item: ExploreDiscoveryItem,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onHashtagClick: (String) -> Unit = {}
 ) {
     val post = item.post
+    val firstTag = remember(post.hashtags, post.caption) {
+        extractNormalizedHashtags(post).firstOrNull()
+    }
+    val imageRequest = rememberOptimizedImageRequest(post.mediaUrls.firstOrNull())
+    val tileSemanticsLabel = remember(post, firstTag) {
+        buildString {
+            append(if (post.isVideo) "Video" else "Photo")
+            append(" by @${post.user.username}")
+            if (post.caption.isNotBlank()) {
+                append(": ${post.caption.take(60)}")
+            }
+            if (firstTag != null) {
+                append(", tagged $firstTag")
+            }
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(item.masonryAspectRatio)
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .semantics { contentDescription = tileSemanticsLabel }
+            .clickable(
+                role = Role.Button,
+                onClickLabel = "Open post by @${post.user.username}",
+                onClick = onClick
+            )
             .testTag("explore_tile_${item.id}")
     ) {
         AsyncImage(
-            model = post.mediaUrls.firstOrNull(),
-            contentDescription = "Explore post by ${post.user.username}",
+            model = imageRequest,
+            contentDescription = null,
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop
         )
@@ -1002,13 +1417,41 @@ private fun MasonryDiscoveryTile(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .height(52.dp)
+                .height(54.dp)
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f))
+                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f))
                     )
                 )
         )
+
+        // Top-left primary hashtag pill (tap to filter masonry grid)
+        if (firstTag != null) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Color.Black.copy(alpha = 0.58f),
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp)
+                    .clickable(
+                        role = Role.Button,
+                        onClickLabel = "Filter by $firstTag"
+                    ) { onHashtagClick(firstTag) }
+                    .testTag("tile_hashtag_${item.id}")
+            ) {
+                Text(
+                    text = firstTag,
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 10.sp
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                )
+            }
+        }
 
         // Top-right media type badge (Video / Carousel)
         if (post.isVideo) {
@@ -1049,7 +1492,7 @@ private fun MasonryDiscoveryTile(
             )
         }
 
-        // Bottom author & likes overlay
+        // Bottom author & category overlay
         Row(
             modifier = Modifier
                 .align(Alignment.BottomStart)
@@ -1071,7 +1514,7 @@ private fun MasonryDiscoveryTile(
             )
             Text(
                 text = item.category,
-                color = Color.White.copy(alpha = 0.8f),
+                color = Color.White.copy(alpha = 0.85f),
                 style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp)
             )
         }

@@ -47,10 +47,16 @@ private class FakeSocialDataSource : SocialDataSource {
     val postStatesFlow = MutableStateFlow<List<FirestorePostState>>(emptyList())
     val userCommentsFlow = MutableStateFlow<List<FirestoreUserComment>>(emptyList())
 
+    var shouldFailFetchLatestPosts = false
+
     override fun observeUserProfile(userId: String): Flow<FirestoreUserProfile?> = profileFlow
     override fun observeUserPosts(userId: String): Flow<List<FirestoreUserPost>> = userPostsFlow
-    override suspend fun fetchLatestUserPosts(userId: String): Result<List<FirestoreUserPost>> =
-        Result.success(userPostsFlow.value)
+    override suspend fun fetchLatestUserPosts(userId: String): Result<List<FirestoreUserPost>> {
+        if (shouldFailFetchLatestPosts) {
+            return Result.failure(IllegalStateException("Firestore temporarily unavailable"))
+        }
+        return Result.success(userPostsFlow.value)
+    }
     override fun observePostStates(userId: String): Flow<List<FirestorePostState>> = postStatesFlow
     override fun observeUserComments(userId: String): Flow<List<FirestoreUserComment>> = userCommentsFlow
 
@@ -693,5 +699,42 @@ class InstagramViewModelTest {
         // Opening story by id from notification opens StoryViewer
         viewModel.openStoryById("story_me")
         assertEquals("story_me", viewModel.activeStory.value?.id)
+    }
+
+    @Test
+    fun testExploreHashtagsExtractionAndSyncRecovery() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.posts.collect {} }
+
+        // 1. Firestore post with inline and explicit hashtags surfaces for Explore filtering
+        repository.userPostsFlow.value = listOf(
+            FirestoreUserPost(
+                id = "explore_cloud_1",
+                userId = "test_user_123",
+                authorUsername = "alex.creates",
+                authorAvatarUrl = "https://example.com/avatar.jpg",
+                caption = "Concrete light study #MasonryExplore #Architecture",
+                imageUrl = "https://example.com/explore1.jpg",
+                hashtags = listOf("#masonryexplore", "#minimal"),
+                likesCount = 14L
+            )
+        )
+        val cloudPost = viewModel.posts.value.firstOrNull { it.id == "explore_cloud_1" }
+        assertNotNull(cloudPost)
+        val normalized = com.example.ui.screens.extractNormalizedHashtags(cloudPost!!)
+        assertEquals(listOf("#masonryexplore", "#minimal", "#architecture"), normalized)
+
+        // 2. Refresh failure updates syncState to Error, retry recovers to Ready
+        repository.shouldFailFetchLatestPosts = true
+        viewModel.refreshFeed()
+        val errorState = viewModel.syncState.value
+        assertTrue(errorState is com.example.ui.viewmodel.FirestoreSyncState.Error)
+        assertEquals(
+            "Firestore temporarily unavailable",
+            (errorState as com.example.ui.viewmodel.FirestoreSyncState.Error).message
+        )
+
+        repository.shouldFailFetchLatestPosts = false
+        viewModel.refreshFeed()
+        assertEquals(com.example.ui.viewmodel.FirestoreSyncState.Ready, viewModel.syncState.value)
     }
 }

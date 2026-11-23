@@ -1460,7 +1460,9 @@ class InstagramViewModel(
                         }
                     },
                     onFailure = { err ->
-                        _snackbarMessage.value = err.localizedMessage ?: "Failed to refresh feed"
+                        val msg = err.localizedMessage ?: "Failed to refresh feed"
+                        _syncState.value = FirestoreSyncState.Error(msg)
+                        _snackbarMessage.value = msg
                     }
                 )
             } finally {

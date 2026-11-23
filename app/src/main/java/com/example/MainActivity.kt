@@ -222,6 +222,7 @@ fun InstagramApp(
     val directMessages by viewModel.directMessages.collectAsStateWithLifecycle()
     val activeChatThread by viewModel.activeChatThread.collectAsStateWithLifecycle()
     val isRefreshingFeed by viewModel.isRefreshingFeed.collectAsStateWithLifecycle()
+    val syncState by viewModel.syncState.collectAsStateWithLifecycle()
     val isLoadingMore by viewModel.isLoadingMorePosts.collectAsStateWithLifecycle()
     val followedUsers by viewModel.followedUsers.collectAsStateWithLifecycle()
     val isReelMuted by viewModel.isReelMuted.collectAsStateWithLifecycle()
@@ -294,6 +295,7 @@ fun InstagramApp(
                         reels = reels,
                         currentUser = currentUser,
                         viewedProfileUser = viewedProfileUser,
+                        syncState = syncState,
                         isRefreshingFeed = isRefreshingFeed,
                         isLoadingMore = isLoadingMore,
                         followedUsers = followedUsers,
@@ -354,6 +356,7 @@ fun InstagramApp(
                         reels = reels,
                         currentUser = currentUser,
                         viewedProfileUser = viewedProfileUser,
+                        syncState = syncState,
                         isRefreshingFeed = isRefreshingFeed,
                         isLoadingMore = isLoadingMore,
                         followedUsers = followedUsers,
@@ -542,6 +545,7 @@ private fun ScreenContent(
     reels: List<com.example.model.Reel>,
     currentUser: com.example.model.User,
     viewedProfileUser: com.example.model.User?,
+    syncState: com.example.ui.viewmodel.FirestoreSyncState,
     isRefreshingFeed: Boolean,
     isLoadingMore: Boolean,
     followedUsers: Map<String, Boolean>,
@@ -582,6 +586,9 @@ private fun ScreenContent(
             ExploreScreen(
                 feedPosts = posts,
                 followedUsers = followedUsers,
+                syncState = syncState,
+                isRefreshing = isRefreshingFeed,
+                onRefresh = { viewModel.refreshFeed() },
                 onToggleFollowUser = { userId -> viewModel.toggleFollowUser(userId) },
                 onLikePost = { postId -> viewModel.toggleLikePost(postId) },
                 onDoubleTapLikePost = { postId -> viewModel.doubleTapLikePost(postId) },
