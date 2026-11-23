@@ -36,10 +36,25 @@ jobs:
           if [ -f debug.keystore.base64 ]; then
             base64 -d debug.keystore.base64 > debug.keystore
           fi
+          if [ ! -s debug.keystore ]; then
+            echo "debug.keystore missing or empty; generating CI debug keystore"
+            rm -f debug.keystore
+            keytool -genkeypair -v -keystore debug.keystore \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          ls -lh debug.keystore
           if [ -n "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" ]; then
             echo "${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}" | base64 -d > app/google-services.json
           fi
           touch .env
+
+      - name: Ensure Android SDK licenses
+        run: |
+          if [ -n "${ANDROID_HOME:-}" ] && [ -x "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" ]; then
+            yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null 2>&1 || true
+          fi
 
       - name: Compute release version
         id: version
@@ -55,7 +70,12 @@ jobs:
           echo "version_code=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
 
       - name: Run unit tests
-        run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
+        run: |
+          gradle :app:testDebugUnitTest \
+            -PappVersionCode="${{ steps.version.outputs.version_code }}" \
+            -PappVersionName="${{ steps.version.outputs.version_name }}" \
+            -Dorg.gradle.jvmargs="-Xmx2560m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8" \
+            --max-workers=2 --no-configuration-cache --no-daemon --stacktrace
 
       - name: Upload unit test report on failure
         if: failure()
@@ -66,14 +86,30 @@ jobs:
 
       - name: Build APK
         run: |
+          set -o pipefail
           gradle :app:assembleDebug \
             -PappVersionCode="${{ steps.version.outputs.version_code }}" \
             -PappVersionName="${{ steps.version.outputs.version_name }}" \
-            --no-daemon --stacktrace
+            -Dorg.gradle.jvmargs="-Xmx2560m -XX:MaxMetaspaceSize=768m -Dfile.encoding=UTF-8" \
+            --max-workers=2 --no-configuration-cache --no-daemon --stacktrace --console=plain \
+            2>&1 | tee build-apk.log || {
+              echo "=== BUILD APK FAILURE SUMMARY ==="
+              tail -n 120 build-apk.log
+              exit 1
+            }
+
+      - name: Upload APK build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-apk-log-${{ github.run_number }}
+          path: build-apk.log
+          if-no-files-found: ignore
 
       - name: Prepare APK asset
         run: |
           mkdir -p release-assets
+          ls -lh app/build/outputs/apk/debug/
           cp app/build/outputs/apk/debug/app-debug.apk "release-assets/InstaSnap-${{ steps.version.outputs.tag }}.apk"
 
       - name: Upload APK artifact
