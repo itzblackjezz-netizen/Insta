@@ -773,4 +773,38 @@ class InstagramViewModelTest {
         assertEquals(false, viewModel.followedUsers.value[creator.id])
         assertEquals("Unfollowed @${creator.username}", viewModel.snackbarMessage.value)
     }
+
+    @Test
+    fun testRefreshReelsReloadsTrendingAndRemoteVideos() = runTest {
+        val initialTopId = viewModel.reels.value.first().id
+
+        // 1. Refresh with curated trending reels rotates top trending reel forward
+        viewModel.refreshReels()
+        assertFalse(viewModel.isRefreshingReels.value)
+        assertEquals("Latest trending reels loaded", viewModel.snackbarMessage.value)
+        assertNotEquals(initialTopId, viewModel.reels.value.first().id)
+
+        // 2. Refresh when a new remote video post exists in Firestore surfaces it at the top
+        repository.userPostsFlow.value = listOf(
+            FirestoreUserPost(
+                id = "remote_video_reel_1",
+                userId = "test_user_123",
+                authorUsername = "alex.creates",
+                authorAvatarUrl = "https://example.com/avatar.jpg",
+                caption = "Night drone flight #reels #trending",
+                imageUrl = "https://firebasestorage.googleapis.com/v0/b/test/o/drone_clip.mp4?alt=media",
+                likesCount = 12L
+            )
+        )
+        viewModel.refreshReels()
+        assertFalse(viewModel.isRefreshingReels.value)
+        assertEquals("remote_video_reel_1", viewModel.reels.value.first().id)
+        assertEquals("Reels refreshed (1 latest video)", viewModel.snackbarMessage.value)
+
+        // 3. Refresh failure resets isRefreshingReels and surfaces error message
+        repository.shouldFailFetchLatestPosts = true
+        viewModel.refreshReels()
+        assertFalse(viewModel.isRefreshingReels.value)
+        assertEquals("Firestore temporarily unavailable", viewModel.snackbarMessage.value)
+    }
 }

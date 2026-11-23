@@ -77,6 +77,8 @@ class InstagramViewModel(
 
     private val _isRefreshingFeed = MutableStateFlow(false)
     val isRefreshingFeed: StateFlow<Boolean> = _isRefreshingFeed.asStateFlow()
+    private val _isRefreshingReels = MutableStateFlow(false)
+    val isRefreshingReels: StateFlow<Boolean> = _isRefreshingReels.asStateFlow()
     private val _manualRefreshedUserPosts = MutableStateFlow<List<FirestoreUserPost>?>(null)
 
     private val _syncState = MutableStateFlow<FirestoreSyncState>(FirestoreSyncState.Loading)
@@ -1493,6 +1495,67 @@ class InstagramViewModel(
                 )
             } finally {
                 _isRefreshingFeed.value = false
+            }
+        }
+    }
+
+    fun refreshReels() {
+        if (_isRefreshingReels.value) return
+        viewModelScope.launch {
+            _isRefreshingReels.value = true
+            try {
+                val res = repository.fetchLatestUserPosts(currentUserId)
+                res.fold(
+                    onSuccess = { latestPosts ->
+                        val owner = currentUser.value
+                        val existingById = _reels.value.associateBy { it.id }
+
+                        val remoteVideoReels = latestPosts
+                            .filter { fp ->
+                                fp.imageUrl.contains(".mp4", ignoreCase = true) ||
+                                    fp.imageUrl.contains("video", ignoreCase = true)
+                            }
+                            .map { fp ->
+                                val existing = existingById[fp.id]
+                                existing ?: Reel(
+                                    id = fp.id,
+                                    user = owner.copy(
+                                        username = fp.authorUsername.ifBlank { owner.username },
+                                        avatarUrl = fp.authorAvatarUrl.ifBlank { owner.avatarUrl }
+                                    ),
+                                    caption = fp.caption,
+                                    audioTitle = "Original Audio • ${fp.authorUsername.ifBlank { owner.username }}",
+                                    mediaUrl = fp.imageUrl,
+                                    videoUrl = fp.imageUrl,
+                                    likesCount = fp.likesCount.toInt().coerceAtLeast(1),
+                                    commentsCount = fp.commentsCount.toInt(),
+                                    sharesCount = 0,
+                                    isLiked = fp.liked,
+                                    isSaved = fp.saved
+                                )
+                            }
+
+                        val remoteIds = remoteVideoReels.map { it.id }.toSet()
+                        val currentTrending = _reels.value
+                            .filterNot { it.id in remoteIds }
+                            .let { list ->
+                                // Rotate the top trending reel forward on refresh so fresh trending clips surface first
+                                if (list.size > 1) list.drop(1) + list.first() else list
+                            }
+
+                        _reels.value = remoteVideoReels + currentTrending
+                        _snackbarMessage.value = if (remoteVideoReels.isNotEmpty()) {
+                            "Reels refreshed (${remoteVideoReels.size} latest ${if (remoteVideoReels.size == 1) "video" else "videos"})"
+                        } else {
+                            "Latest trending reels loaded"
+                        }
+                    },
+                    onFailure = { err ->
+                        _snackbarMessage.value = err.localizedMessage ?: "Failed to refresh reels"
+                    }
+                )
+            } finally {
+                _isRefreshingReels.value = false
             }
         }
     }

@@ -18,8 +18,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
@@ -41,6 +43,9 @@ import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -92,12 +97,15 @@ import java.util.Locale
 
 private val PLAYBACK_SPEED_OPTIONS = listOf(1.0f, 1.5f, 2.0f)
 
+@kotlin.OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReelsScreen(
     reels: List<Reel>,
     currentUser: User,
     followedUsers: Map<String, Boolean>,
     isMuted: Boolean,
+    isRefreshing: Boolean = false,
+    onRefresh: () -> Unit = {},
     onToggleMute: () -> Unit,
     onLikeReel: (String) -> Unit,
     onDoubleTapLikeReel: (String) -> Unit,
@@ -110,12 +118,21 @@ fun ReelsScreen(
     modifier: Modifier = Modifier
 ) {
     val pagerState = rememberPagerState(pageCount = { reels.size })
+    val pullToRefreshState = rememberPullToRefreshState()
     val coroutineScope = rememberCoroutineScope()
     val lifecycleOwner = LocalLifecycleOwner.current
     var isAppResumed by remember { mutableStateOf(true) }
     var autoAdvanceEnabled by remember { mutableStateOf(false) }
     var playbackSpeedIndex by remember { mutableIntStateOf(0) }
     val selectedSpeed = PLAYBACK_SPEED_OPTIONS[playbackSpeedIndex]
+
+    var wasRefreshing by remember { mutableStateOf(false) }
+    LaunchedEffect(isRefreshing, reels.size) {
+        if (wasRefreshing && !isRefreshing && reels.isNotEmpty() && pagerState.currentPage != 0) {
+            pagerState.animateScrollToPage(0)
+        }
+        wasRefreshing = isRefreshing
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -147,7 +164,23 @@ fun ReelsScreen(
 
     val isSheetOpen = activeCommentsReel != null || activeShareReel != null || activeOptionsReel != null
 
-    Box(
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
+        state = pullToRefreshState,
+        indicator = {
+            PullToRefreshDefaults.Indicator(
+                state = pullToRefreshState,
+                isRefreshing = isRefreshing,
+                containerColor = Color.Black.copy(alpha = 0.85f),
+                color = IgBlue,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 56.dp)
+                    .testTag("reels_refresh_indicator")
+            )
+        },
         modifier = modifier
             .fillMaxSize()
             .background(Color.Black)
@@ -157,6 +190,7 @@ fun ReelsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
                     .padding(32.dp)
                     .testTag("reels_empty_state"),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -169,7 +203,7 @@ fun ReelsScreen(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Tap the camera icon to record or upload a short-form video.",
+                    text = "Pull down to check for trending videos or tap Create Reel.",
                     color = Color.White.copy(alpha = 0.7f),
                     style = MaterialTheme.typography.bodySmall
                 )

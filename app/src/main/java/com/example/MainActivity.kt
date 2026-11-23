@@ -222,6 +222,7 @@ fun InstagramApp(
     val directMessages by viewModel.directMessages.collectAsStateWithLifecycle()
     val activeChatThread by viewModel.activeChatThread.collectAsStateWithLifecycle()
     val isRefreshingFeed by viewModel.isRefreshingFeed.collectAsStateWithLifecycle()
+    val isRefreshingReels by viewModel.isRefreshingReels.collectAsStateWithLifecycle()
     val syncState by viewModel.syncState.collectAsStateWithLifecycle()
     val isLoadingMore by viewModel.isLoadingMorePosts.collectAsStateWithLifecycle()
     val followedUsers by viewModel.followedUsers.collectAsStateWithLifecycle()
@@ -297,6 +298,7 @@ fun InstagramApp(
                         viewedProfileUser = viewedProfileUser,
                         syncState = syncState,
                         isRefreshingFeed = isRefreshingFeed,
+                        isRefreshingReels = isRefreshingReels,
                         isLoadingMore = isLoadingMore,
                         followedUsers = followedUsers,
                         isReelMuted = isReelMuted,
@@ -358,6 +360,7 @@ fun InstagramApp(
                         viewedProfileUser = viewedProfileUser,
                         syncState = syncState,
                         isRefreshingFeed = isRefreshingFeed,
+                        isRefreshingReels = isRefreshingReels,
                         isLoadingMore = isLoadingMore,
                         followedUsers = followedUsers,
                         isReelMuted = isReelMuted,
@@ -547,6 +550,7 @@ private fun ScreenContent(
     viewedProfileUser: com.example.model.User?,
     syncState: com.example.ui.viewmodel.FirestoreSyncState,
     isRefreshingFeed: Boolean,
+    isRefreshingReels: Boolean,
     isLoadingMore: Boolean,
     followedUsers: Map<String, Boolean>,
     isReelMuted: Boolean,
@@ -625,6 +629,8 @@ private fun ScreenContent(
                 currentUser = currentUser,
                 followedUsers = followedUsers,
                 isMuted = isReelMuted,
+                isRefreshing = isRefreshingReels,
+                onRefresh = { viewModel.refreshReels() },
                 onToggleMute = { viewModel.toggleReelMute() },
                 onLikeReel = { reelId -> viewModel.toggleLikeReel(reelId) },
                 onDoubleTapLikeReel = { reelId -> viewModel.doubleTapLikeReel(reelId) },
