@@ -632,7 +632,8 @@ private fun ScreenContent(
                 onToggleFollowUser = { userId -> viewModel.toggleFollowUser(userId) },
                 onAddReelComment = { reelId, text -> viewModel.addReelComment(reelId, text) },
                 onShareReel = { reel, recipient -> viewModel.shareReel(reel, recipient) },
-                onCreateReelClick = { viewModel.selectTab(NavigationTab.CREATE) }
+                onCreateReelClick = { viewModel.selectTab(NavigationTab.CREATE) },
+                onUserClick = { user -> viewModel.openUserProfile(user) }
             )
         }
         NavigationTab.PROFILE -> {

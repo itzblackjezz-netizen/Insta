@@ -1392,6 +1392,22 @@ class InstagramViewModel(
             )
             if (res.isSuccess) {
                 val createdPostId = res.getOrNull()
+                if (isVideo) {
+                    val newReel = Reel(
+                        id = createdPostId ?: "reel_${UUID.randomUUID()}",
+                        user = user,
+                        caption = caption,
+                        audioTitle = "Original Audio • ${user.username}",
+                        mediaUrl = hostedMediaUrl,
+                        videoUrl = hostedMediaUrl,
+                        likesCount = 1,
+                        commentsCount = 0,
+                        sharesCount = 0,
+                        isLiked = true,
+                        isSaved = false
+                    )
+                    _reels.update { listOf(newReel) + it }
+                }
                 _postUploadState.value = PostUploadState.Idle
                 _aiCaptionState.value = AiCaptionUiState.Idle
                 _snackbarMessage.value = "Post uploaded & published to Firestore! 🎉"

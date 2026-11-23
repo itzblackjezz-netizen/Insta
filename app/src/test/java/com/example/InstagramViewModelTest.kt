@@ -737,4 +737,23 @@ class InstagramViewModelTest {
         viewModel.refreshFeed()
         assertEquals(com.example.ui.viewmodel.FirestoreSyncState.Ready, viewModel.syncState.value)
     }
+
+    @Test
+    fun testCreateVideoPostPopulatesReelsFeed() = runTest {
+        val initialReelsCount = viewModel.reels.value.size
+        val localVideoUri = "content://media/external/video/media/901"
+
+        viewModel.createPost(
+            caption = "Golden hour skate clip #reels #video",
+            imageUrl = localVideoUri,
+            location = "Venice Beach, CA",
+            isVideo = true
+        )
+
+        assertEquals(initialReelsCount + 1, viewModel.reels.value.size)
+        val newReel = viewModel.reels.value.first()
+        assertEquals("Golden hour skate clip #reels #video", newReel.caption)
+        assertTrue(newReel.videoUrl.startsWith("https://firebasestorage.googleapis.com/"))
+        assertTrue(newReel.videoUrl.endsWith(".mp4?alt=media"))
+    }
 }
