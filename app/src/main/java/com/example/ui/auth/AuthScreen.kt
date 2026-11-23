@@ -65,18 +65,21 @@ private fun resolveDefaultWebClientId(context: Context): String? {
     return runCatching { context.getString(resId) }.getOrNull()?.takeIf { it.isNotBlank() }
 }
 
-fun attemptAutoSignIn(
+suspend fun attemptAutoSignIn(
     context: Context,
     credentialManager: CredentialManager,
     onAuthSuccess: () -> Unit,
-    onUnauthenticated: () -> Unit,
-    scope: CoroutineScope
+    onUnauthenticated: () -> Unit
 ) {
     if (Firebase.auth.currentUser != null) {
         onAuthSuccess()
         return
     }
-    val clientId = resolveDefaultWebClientId(context) ?: run {
+    val activityContext = context as? Activity ?: run {
+        onUnauthenticated()
+        return
+    }
+    val clientId = resolveDefaultWebClientId(activityContext) ?: run {
         onUnauthenticated()
         return
     }
@@ -88,19 +91,22 @@ fun attemptAutoSignIn(
     val request = GetCredentialRequest.Builder()
         .addCredentialOption(googleIdOption)
         .build()
-    scope.launch {
-        try {
-            val cred = credentialManager.getCredential(context, request).credential
-            if (cred is CustomCredential && cred.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
-                val token = GoogleIdTokenCredential.createFrom(cred.data).idToken
-                Firebase.auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null)).await()
-                onAuthSuccess()
-            } else {
-                onUnauthenticated()
-            }
-        } catch (_: Exception) {
+    try {
+        val result = kotlinx.coroutines.withTimeoutOrNull(2_000L) {
+            credentialManager.getCredential(activityContext, request)
+        }
+        val cred = result?.credential
+        if (cred is CustomCredential && cred.type == TYPE_GOOGLE_ID_TOKEN_CREDENTIAL) {
+            val token = GoogleIdTokenCredential.createFrom(cred.data).idToken
+            Firebase.auth.signInWithCredential(GoogleAuthProvider.getCredential(token, null)).await()
+            onAuthSuccess()
+        } else {
             onUnauthenticated()
         }
+    } catch (e: kotlinx.coroutines.CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        onUnauthenticated()
     }
 }
 
@@ -167,6 +173,7 @@ fun signOut(
 fun GoogleSignInButton(
     onAuthSuccess: () -> Unit,
     onAuthError: (String) -> Unit,
+    onSignInStarted: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -176,6 +183,7 @@ fun GoogleSignInButton(
 
     Button(
         onClick = {
+            onSignInStarted()
             isLoading = true
             onGoogleSignInClicked(
                 context = context,
@@ -227,12 +235,14 @@ fun AuthScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val credentialManager = remember(context) { CredentialManager.create(context) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
-    var checkingAutoSignIn by remember { mutableStateOf(true) }
+    var checkingAutoSignIn by remember { mutableStateOf(false) }
+    var autoSignInCancelledByUser by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(autoSignInCancelledByUser) {
+        if (autoSignInCancelledByUser) return@LaunchedEffect
+        checkingAutoSignIn = true
         attemptAutoSignIn(
             context = context,
             credentialManager = credentialManager,
@@ -242,8 +252,7 @@ fun AuthScreen(
             },
             onUnauthenticated = {
                 checkingAutoSignIn = false
-            },
-            scope = scope
+            }
         )
     }
 
@@ -301,27 +310,37 @@ fun AuthScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
+            GoogleSignInButton(
+                onAuthSuccess = {
+                    errorMessage = null
+                    onAuthSuccess()
+                },
+                onAuthError = { msg ->
+                    errorMessage = msg
+                },
+                onSignInStarted = {
+                    autoSignInCancelledByUser = true
+                    checkingAutoSignIn = false
+                }
+            )
+
             if (checkingAutoSignIn) {
-                CircularProgressIndicator(
-                    color = IgBlue,
-                    modifier = Modifier.size(32.dp)
-                )
                 Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = "Checking session...",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                GoogleSignInButton(
-                    onAuthSuccess = {
-                        errorMessage = null
-                        onAuthSuccess()
-                    },
-                    onAuthError = { msg ->
-                        errorMessage = msg
-                    }
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    CircularProgressIndicator(
+                        color = IgBlue,
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Text(
+                        text = "Checking saved session...",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             errorMessage?.let { msg ->

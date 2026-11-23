@@ -61,18 +61,24 @@ class MainActivity : ComponentActivity() {
             val scope = rememberCoroutineScope()
             val credentialManager = remember(context) { CredentialManager.create(context) }
 
-            val updatePrefs = remember(context) {
-                AppUpdatePreferences(context, context.getString(R.string.github_repo))
+            val defaultGithubRepo = remember(context) {
+                context.getString(R.string.github_repo)
             }
-            var configuredRepo by remember { mutableStateOf(updatePrefs.getConfiguredRepo()) }
+            var updatePrefs by remember { mutableStateOf<AppUpdatePreferences?>(null) }
+            var configuredRepo by remember { mutableStateOf(defaultGithubRepo.trim()) }
             var isCheckingUpdates by remember { mutableStateOf(false) }
             var lastUpdateCheckResult by remember { mutableStateOf<UpdateCheckResult?>(null) }
             var pendingUpdateRelease by remember { mutableStateOf<GitHubReleaseInfo?>(null) }
             var showUpdatesSheet by remember { mutableStateOf(false) }
 
-            // Automatically check GitHub Releases for a newer APK when the app opens
+            // Load update preferences off the main thread and check GitHub Releases asynchronously
             LaunchedEffect(Unit) {
-                val repo = configuredRepo
+                val (prefs, repo) = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val loadedPrefs = AppUpdatePreferences(context, defaultGithubRepo)
+                    loadedPrefs to loadedPrefs.getConfiguredRepo()
+                }
+                updatePrefs = prefs
+                configuredRepo = repo
                 if (repo.isNotBlank()) {
                     isCheckingUpdates = true
                     val result = AppUpdateChecker.checkForUpdates(
@@ -156,7 +162,9 @@ class MainActivity : ComponentActivity() {
                                 isChecking = isCheckingUpdates,
                                 lastCheckResult = lastUpdateCheckResult,
                                 onSaveAndCheck = { newRepo ->
-                                    updatePrefs.setConfiguredRepo(newRepo)
+                                    val prefs = updatePrefs ?: AppUpdatePreferences(context, defaultGithubRepo)
+                                    updatePrefs = prefs
+                                    prefs.setConfiguredRepo(newRepo)
                                     configuredRepo = newRepo
                                     scope.launch {
                                         isCheckingUpdates = true
