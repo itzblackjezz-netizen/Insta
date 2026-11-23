@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.*
@@ -21,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.model.Comment
 import com.example.model.Post
 import com.example.model.User
 import com.example.ui.theme.IgBlue
@@ -34,10 +36,14 @@ fun CommentsBottomSheet(
     onDismiss: () -> Unit,
     onAddComment: (String) -> Unit,
     onLikeComment: (String) -> Unit,
+    onReplyComment: (Comment, String) -> Unit = { parent, text ->
+        onAddComment("@${parent.username} $text")
+    },
     modifier: Modifier = Modifier
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var commentInput by remember { mutableStateOf("") }
+    var replyingToComment by remember { mutableStateOf<Comment?>(null) }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -151,8 +157,11 @@ fun CommentsBottomSheet(
                     }
                 } else {
                     items(post.comments, key = { it.id }) { comment ->
+                        val isReply = comment.replyToUsername != null || comment.text.trimStart().startsWith("@")
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = if (isReply) 24.dp else 0.dp),
                             verticalAlignment = Alignment.Top
                         ) {
                             AsyncImage(
@@ -194,7 +203,7 @@ fun CommentsBottomSheet(
                                         fontWeight = FontWeight.SemiBold
                                     ),
                                     modifier = Modifier.clickable {
-                                        commentInput = "@${comment.username} "
+                                        replyingToComment = comment
                                     }
                                 )
                             }
@@ -255,6 +264,35 @@ fun CommentsBottomSheet(
                 thickness = 0.5.dp
             )
 
+            // Active Reply Indicator
+            replyingToComment?.let { target ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Replying to @${target.username}",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    IconButton(
+                        onClick = { replyingToComment = null },
+                        modifier = Modifier.size(20.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Cancel reply",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+            }
+
             // Pinned Bottom Composer
             Row(
                 modifier = Modifier
@@ -278,7 +316,8 @@ fun CommentsBottomSheet(
                     onValueChange = { commentInput = it },
                     placeholder = {
                         Text(
-                            text = "Add a comment for ${post.user.username}...",
+                            text = replyingToComment?.let { "Reply to @${it.username}..." }
+                                ?: "Add a comment for ${post.user.username}...",
                             style = MaterialTheme.typography.bodyMedium.copy(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 13.sp
@@ -302,13 +341,19 @@ fun CommentsBottomSheet(
                 if (commentInput.isNotBlank()) {
                     TextButton(
                         onClick = {
-                            onAddComment(commentInput)
+                            val target = replyingToComment
+                            if (target != null) {
+                                onReplyComment(target, commentInput)
+                            } else {
+                                onAddComment(commentInput)
+                            }
                             commentInput = ""
+                            replyingToComment = null
                         },
                         modifier = Modifier.testTag("comments_sheet_post_button")
                     ) {
                         Text(
-                            text = "Post",
+                            text = if (replyingToComment != null) "Reply" else "Post",
                             style = MaterialTheme.typography.labelLarge.copy(
                                 fontWeight = FontWeight.Bold,
                                 color = IgBlue

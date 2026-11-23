@@ -213,6 +213,7 @@ fun InstagramApp(
     val activeOptionsPost by viewModel.activeOptionsPost.collectAsStateWithLifecycle()
     val activeAiCompanionPost by viewModel.activeAiCompanionPost.collectAsStateWithLifecycle()
     val aiCaptionState by viewModel.aiCaptionState.collectAsStateWithLifecycle()
+    val postUploadState by viewModel.postUploadState.collectAsStateWithLifecycle()
     val aiCompanionState by viewModel.aiCompanionState.collectAsStateWithLifecycle()
     val showDirectMessages by viewModel.showDirectMessages.collectAsStateWithLifecycle()
     val showNotifications by viewModel.showNotifications.collectAsStateWithLifecycle()
@@ -300,6 +301,7 @@ fun InstagramApp(
                         isDarkMode = isDarkMode,
                         unreadNotificationsCount = unreadNotificationsCount,
                         aiCaptionState = aiCaptionState,
+                        postUploadState = postUploadState,
                         onSignOutClick = onSignOutClick,
                         onOpenUpdatesSettings = onOpenUpdatesSettings
                     )
@@ -359,6 +361,7 @@ fun InstagramApp(
                         isDarkMode = isDarkMode,
                         unreadNotificationsCount = unreadNotificationsCount,
                         aiCaptionState = aiCaptionState,
+                        postUploadState = postUploadState,
                         onSignOutClick = onSignOutClick,
                         onOpenUpdatesSettings = onOpenUpdatesSettings
                     )
@@ -482,7 +485,8 @@ fun InstagramApp(
                 currentUser = currentUser,
                 onDismiss = { viewModel.closeComments() },
                 onAddComment = { text -> viewModel.addComment(post.id, text) },
-                onLikeComment = { commentId -> viewModel.toggleLikeComment(post.id, commentId) }
+                onLikeComment = { commentId -> viewModel.toggleLikeComment(post.id, commentId) },
+                onReplyComment = { parent, text -> viewModel.replyToComment(post.id, parent, text) }
             )
         }
 
@@ -545,6 +549,7 @@ private fun ScreenContent(
     isDarkMode: Boolean,
     unreadNotificationsCount: Int,
     aiCaptionState: com.example.ui.viewmodel.AiCaptionUiState,
+    postUploadState: com.example.ui.viewmodel.PostUploadState,
     onSignOutClick: () -> Unit,
     onOpenUpdatesSettings: () -> Unit
 ) {
@@ -568,6 +573,8 @@ private fun ScreenContent(
                 onAiInsightsClick = { post -> viewModel.openAiCompanion(post) },
                 onUserClick = { user -> viewModel.openUserProfile(user) },
                 onAddQuickComment = { postId, text -> viewModel.addComment(postId, text) },
+                onLikeComment = { postId, commentId -> viewModel.toggleLikeComment(postId, commentId) },
+                onReplyComment = { postId, parent, text -> viewModel.replyToComment(postId, parent, text) },
                 onLoadMore = { viewModel.loadMorePosts() }
             )
         }
@@ -584,19 +591,25 @@ private fun ScreenContent(
                 onOptionsPost = { post -> viewModel.openOptions(post) },
                 onAiInsightsPost = { post -> viewModel.openAiCompanion(post) },
                 onAddQuickComment = { postId, text -> viewModel.addComment(postId, text) },
+                onLikeComment = { postId, commentId -> viewModel.toggleLikeComment(postId, commentId) },
+                onReplyComment = { postId, parent, text -> viewModel.replyToComment(postId, parent, text) },
                 onUserClick = { user -> viewModel.openUserProfile(user) }
             )
         }
         NavigationTab.CREATE -> {
             CreatePostScreen(
                 aiCaptionState = aiCaptionState,
+                postUploadState = postUploadState,
                 onGenerateAiCaptions = { topicOrVibe, location, filterName ->
                     viewModel.generateAiCaptions(topicOrVibe, location, filterName)
                 },
-                onSharePost = { caption, imageUrl, location ->
-                    viewModel.createPost(caption, imageUrl, location)
+                onSharePost = { caption, imageUrl, location, isVideo ->
+                    viewModel.createPost(caption, imageUrl, location, isVideo)
                 },
-                onCancel = { viewModel.selectTab(NavigationTab.HOME) }
+                onCancel = {
+                    viewModel.resetPostUploadState()
+                    viewModel.selectTab(NavigationTab.HOME)
+                }
             )
         }
         NavigationTab.REELS -> {

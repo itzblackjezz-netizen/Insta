@@ -36,7 +36,8 @@ data class Comment(
     val text: String,
     val timestamp: String,
     val likesCount: Int = 0,
-    val isLiked: Boolean = false
+    val isLiked: Boolean = false,
+    val replyToUsername: String? = null
 )
 
 data class Post(

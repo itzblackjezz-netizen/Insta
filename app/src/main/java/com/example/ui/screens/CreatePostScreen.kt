@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -17,13 +19,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -37,12 +39,16 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import com.example.data.SampleData
 import com.example.model.User
 import com.example.ui.theme.IgBlue
 import com.example.ui.theme.IgPink
 import com.example.ui.viewmodel.AiCaptionUiState
+import com.example.ui.viewmodel.PostUploadState
+import java.io.File
 
 data class PhotoFilter(
     val name: String,
@@ -53,8 +59,9 @@ data class PhotoFilter(
 @Composable
 fun CreatePostScreen(
     aiCaptionState: AiCaptionUiState,
+    postUploadState: PostUploadState = PostUploadState.Idle,
     onGenerateAiCaptions: (topicOrVibe: String, location: String?, filterName: String) -> Unit,
-    onSharePost: (caption: String, imageUrl: String, location: String?) -> Unit,
+    onSharePost: (caption: String, imageUrl: String, location: String?, isVideo: Boolean) -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -63,6 +70,10 @@ fun CreatePostScreen(
 
     var mediaUri by remember { mutableStateOf<String?>(sampleGalleryImages.first()) }
     var isVideoMedia by remember { mutableStateOf(false) }
+    var isCameraCaptured by remember { mutableStateOf(false) }
+    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
+    var showCameraPermissionDeniedBanner by remember { mutableStateOf(false) }
+
     var captionText by remember { mutableStateOf("") }
     var locationText by remember { mutableStateOf("San Francisco, CA") }
     var aiTopicText by remember { mutableStateOf("") }
@@ -84,6 +95,42 @@ fun CreatePostScreen(
 
     val popularHashtags = listOf("#photography", "#vibe", "#aesthetic", "#art", "#travel", "#goldenhour", "#instasnap")
 
+    // Device Camera Capture Launcher via FileProvider
+    val takePictureLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            pendingCameraUri?.let { capturedUri ->
+                isVideoMedia = false
+                isCameraCaptured = true
+                mediaUri = capturedUri.toString()
+            }
+        }
+    }
+
+    val launchDeviceCamera = {
+        val cameraDir = File(context.cacheDir, "camera").apply { mkdirs() }
+        val photoFile = File(cameraDir, "capture_${System.currentTimeMillis()}.jpg")
+        val uri = FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            photoFile
+        )
+        pendingCameraUri = uri
+        showCameraPermissionDeniedBanner = false
+        takePictureLauncher.launch(uri)
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            launchDeviceCamera()
+        } else {
+            showCameraPermissionDeniedBanner = true
+        }
+    }
+
     // Zero-permission Android Photo Picker for Image & Video upload
     val visualMediaPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -97,11 +144,13 @@ fun CreatePostScreen(
             }
             val mimeType = context.contentResolver.getType(uri).orEmpty()
             isVideoMedia = mimeType.startsWith("video/")
+            isCameraCaptured = false
             mediaUri = uri.toString()
         }
     }
 
     val currentImage = mediaUri ?: sampleGalleryImages.first()
+    val isUploading = postUploadState is PostUploadState.Uploading
 
     Column(
         modifier = modifier
@@ -147,16 +196,66 @@ fun CreatePostScreen(
                     } else {
                         captionText
                     }
-                    onSharePost(finalCaption, currentImage, locationText)
+                    onSharePost(finalCaption, currentImage, locationText, isVideoMedia)
                 },
+                enabled = !isUploading,
                 modifier = Modifier.testTag("create_post_share_button")
             ) {
-                Text(
-                    text = "Share",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
+                if (isUploading) {
+                    CircularProgressIndicator(
+                        color = IgBlue,
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text(
+                        text = "Share",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = IgBlue
+                        )
+                    )
+                }
+            }
+        }
+
+        if (postUploadState is PostUploadState.Uploading) {
+            Surface(
+                color = IgBlue.copy(alpha = 0.08f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("firebase_storage_upload_progress")
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
+                    Text(
+                        text = postUploadState.statusText,
+                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = IgBlue
                     )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { postUploadState.progress.coerceIn(0f, 1f) },
+                        color = IgBlue,
+                        trackColor = IgBlue.copy(alpha = 0.2f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                    )
+                }
+            }
+        } else if (postUploadState is PostUploadState.Error) {
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("firebase_storage_upload_error")
+            ) {
+                Text(
+                    text = postUploadState.message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
                 )
             }
         }
@@ -216,6 +315,33 @@ fun CreatePostScreen(
                     }
                 }
 
+                if (isCameraCaptured) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(10.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.Black.copy(alpha = 0.65f))
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.CameraAlt,
+                                contentDescription = "Camera capture",
+                                tint = Color.White,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "CAMERA PHOTO",
+                                color = Color.White,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+
                 if (taggedPeople.isNotEmpty()) {
                     Box(
                         modifier = Modifier
@@ -234,7 +360,7 @@ fun CreatePostScreen(
                 }
             }
 
-            // Upload Button (Device Photo Picker)
+            // Camera Capture + Device Photo/Video Picker Buttons
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -243,24 +369,82 @@ fun CreatePostScreen(
             ) {
                 Button(
                     onClick = {
-                        visualMediaPickerLauncher.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
-                        )
+                        val hasPermission = ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.CAMERA
+                        ) == PackageManager.PERMISSION_GRANTED
+                        if (hasPermission) {
+                            launchDeviceCamera()
+                        } else {
+                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                        }
                     },
+                    enabled = !isUploading,
                     modifier = Modifier
                         .weight(1f)
-                        .height(44.dp)
-                        .testTag("upload_media_button"),
+                        .height(48.dp)
+                        .testTag("take_photo_camera_button"),
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = IgBlue)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Add,
+                        imageVector = Icons.Default.CameraAlt,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Upload Photo or Video", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Text("Take Photo", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        visualMediaPickerLauncher.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
+                        )
+                    },
+                    enabled = !isUploading,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .testTag("upload_media_button"),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PhotoLibrary,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Gallery", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                }
+            }
+
+            if (showCameraPermissionDeniedBanner) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 4.dp)
+                        .testTag("camera_permission_denied_banner")
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Camera permission is needed to take a photo. You can allow it or choose from Gallery.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.weight(1f)
+                        )
+                        TextButton(
+                            onClick = { cameraPermissionLauncher.launch(Manifest.permission.CAMERA) }
+                        ) {
+                            Text("Allow", fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
 
@@ -351,6 +535,7 @@ fun CreatePostScreen(
                             )
                             .clickable {
                                 isVideoMedia = false
+                                isCameraCaptured = false
                                 mediaUri = imgUrl
                             }
                     ) {

@@ -53,6 +53,12 @@ sealed interface FirestoreSyncState {
     data class Error(val message: String) : FirestoreSyncState
 }
 
+sealed interface PostUploadState {
+    data object Idle : PostUploadState
+    data class Uploading(val progress: Float, val statusText: String) : PostUploadState
+    data class Error(val message: String) : PostUploadState
+}
+
 class InstagramViewModel(
     private val repository: SocialDataSource,
     private val aiService: AiAssistantDataSource,
@@ -141,11 +147,18 @@ class InstagramViewModel(
             initialValue = emptyList()
         )
 
-    private val feedAdjustments: Flow<Pair<List<Post>, Set<String>>> = combine(
+    private data class FeedAdjustments(
+        val recycledPosts: List<Post>,
+        val deletedIds: Set<String>,
+        val commentLikes: Map<String, Boolean>
+    )
+
+    private val feedAdjustments: Flow<FeedAdjustments> = combine(
         _recycledFeedPosts,
-        _deletedFeedPostIds
-    ) { recycledPosts, deletedIds ->
-        recycledPosts to deletedIds
+        _deletedFeedPostIds,
+        _commentLikesOverride
+    ) { recycledPosts, deletedIds, commentLikes ->
+        FeedAdjustments(recycledPosts, deletedIds, commentLikes)
     }
 
     val posts: StateFlow<List<Post>> = combine(
@@ -154,7 +167,8 @@ class InstagramViewModel(
         firestorePostStates,
         firestoreUserComments,
         feedAdjustments
-    ) { user, userPosts, postStates, userComments, (recycledPosts, deletedIds) ->
+    ) { user, userPosts, postStates, userComments, adjustments ->
+        val (recycledPosts, deletedIds, commentLikes) = adjustments
         val stateByPostId = postStates.associateBy { it.postId }
         val commentsByPostId = userComments.groupBy { it.postId }
 
@@ -162,15 +176,7 @@ class InstagramViewModel(
             .filterNot { it.id in deletedIds }
             .map { fp ->
                 val extraComments = commentsByPostId[fp.id].orEmpty().map { fc ->
-                    Comment(
-                        id = fc.id,
-                        username = fc.authorUsername,
-                        userAvatar = fc.authorAvatarUrl,
-                        text = fc.text,
-                        timestamp = "Saved",
-                        likesCount = fc.likesCount.toInt(),
-                        isLiked = fc.liked
-                    )
+                    mapFirestoreComment(fc, "Saved", commentLikes)
                 }
                 Post(
                     id = fp.id,
@@ -181,7 +187,8 @@ class InstagramViewModel(
                     location = fp.location,
                     musicTrack = null,
                     mediaUrls = listOf(fp.imageUrl),
-                    isVideo = false,
+                    isVideo = fp.imageUrl.contains(".mp4", ignoreCase = true) ||
+                        fp.imageUrl.contains("video", ignoreCase = true),
                     likesCount = fp.likesCount.toInt(),
                     isLiked = fp.liked,
                     isSaved = fp.saved,
@@ -199,15 +206,23 @@ class InstagramViewModel(
             .map { post ->
             val interaction = stateByPostId[post.id]
             val extraComments = commentsByPostId[post.id].orEmpty().map { fc ->
-                Comment(
-                    id = fc.id,
-                    username = fc.authorUsername,
-                    userAvatar = fc.authorAvatarUrl,
-                    text = fc.text,
-                    timestamp = "Just now",
-                    likesCount = fc.likesCount.toInt(),
-                    isLiked = fc.liked
-                )
+                mapFirestoreComment(fc, "Just now", commentLikes)
+            }
+            val mergedSampleComments = post.comments.map { comment ->
+                val likedOverride = commentLikes[comment.id]
+                if (likedOverride == null) {
+                    comment
+                } else {
+                    val delta = when {
+                        likedOverride && !comment.isLiked -> 1
+                        !likedOverride && comment.isLiked -> -1
+                        else -> 0
+                    }
+                    comment.copy(
+                        isLiked = likedOverride,
+                        likesCount = maxOf(0, comment.likesCount + delta)
+                    )
+                }
             }
             val mergedLiked = interaction?.liked ?: post.isLiked
             val deltaLikes = when {
@@ -220,7 +235,7 @@ class InstagramViewModel(
                 isLiked = mergedLiked,
                 likesCount = maxOf(0, post.likesCount + deltaLikes),
                 isSaved = interaction?.saved ?: post.isSaved,
-                comments = extraComments + post.comments,
+                comments = extraComments + mergedSampleComments,
                 commentsCount = post.commentsCount + extraComments.size
             )
         }
@@ -269,6 +284,9 @@ class InstagramViewModel(
 
     private val _aiCaptionState = MutableStateFlow<AiCaptionUiState>(AiCaptionUiState.Idle)
     val aiCaptionState: StateFlow<AiCaptionUiState> = _aiCaptionState.asStateFlow()
+
+    private val _postUploadState = MutableStateFlow<PostUploadState>(PostUploadState.Idle)
+    val postUploadState: StateFlow<PostUploadState> = _postUploadState.asStateFlow()
 
     private val _aiCompanionState = MutableStateFlow<AiCompanionUiState>(AiCompanionUiState.Idle)
     val aiCompanionState: StateFlow<AiCompanionUiState> = _aiCompanionState.asStateFlow()
@@ -361,6 +379,34 @@ class InstagramViewModel(
             followersCount = profile.followersCount.ifBlank { "18.4K" },
             followingCount = profile.followingCount.ifBlank { "482" },
             mutualFollowersSummary = SampleData.currentUser.mutualFollowersSummary
+        )
+    }
+
+    private fun mapFirestoreComment(
+        fc: FirestoreUserComment,
+        timestampLabel: String,
+        commentLikes: Map<String, Boolean>
+    ): Comment {
+        val replyMatch = Regex("^@([A-Za-z0-9._]+)\\s+").find(fc.text)
+        val replyTo = replyMatch?.groupValues?.getOrNull(1)
+        val likedOverride = commentLikes[fc.id]
+        val isLiked = likedOverride ?: fc.liked
+        val baseCount = fc.likesCount.toInt()
+        val finalCount = when {
+            likedOverride == null -> baseCount
+            likedOverride && !fc.liked -> baseCount + 1
+            !likedOverride && fc.liked -> maxOf(0, baseCount - 1)
+            else -> baseCount
+        }
+        return Comment(
+            id = fc.id,
+            username = fc.authorUsername,
+            userAvatar = fc.authorAvatarUrl,
+            text = fc.text,
+            timestamp = timestampLabel,
+            likesCount = finalCount,
+            isLiked = isLiked,
+            replyToUsername = replyTo
         )
     }
 
@@ -1062,9 +1108,28 @@ class InstagramViewModel(
         }
     }
 
+    fun replyToComment(postId: String, parentComment: Comment, replyText: String) {
+        val trimmed = replyText.trim()
+        if (trimmed.isEmpty()) return
+        val mentionPrefix = "@${parentComment.username}"
+        val formattedText = if (trimmed.startsWith(mentionPrefix, ignoreCase = true)) {
+            trimmed
+        } else {
+            "$mentionPrefix $trimmed"
+        }
+        addComment(postId, formattedText)
+    }
+
     fun toggleLikeComment(postId: String, commentId: String) {
+        val currentLiked = posts.value
+            .firstOrNull { it.id == postId }
+            ?.comments
+            ?.firstOrNull { it.id == commentId }
+            ?.isLiked
+            ?: _commentLikesOverride.value[commentId]
+            ?: false
         _commentLikesOverride.update { current ->
-            current + (commentId to !(current[commentId] ?: false))
+            current + (commentId to !currentLiked)
         }
     }
 
@@ -1268,23 +1333,68 @@ class InstagramViewModel(
         }
     }
 
-    fun createPost(caption: String, imageUrl: String, location: String? = null) {
+    fun resetPostUploadState() {
+        _postUploadState.value = PostUploadState.Idle
+    }
+
+    fun createPost(
+        caption: String,
+        imageUrl: String,
+        location: String? = null,
+        isVideo: Boolean = false
+    ) {
+        if (_postUploadState.value is PostUploadState.Uploading) return
         val user = currentUser.value
         val hashtags = extractHashtags(caption)
         viewModelScope.launch {
+            _postUploadState.value = PostUploadState.Uploading(
+                progress = 0.05f,
+                statusText = "Uploading media to Firebase Storage..."
+            )
+            val uploadRes = repository.uploadPostMedia(
+                userId = currentUserId,
+                mediaUriString = imageUrl,
+                isVideo = isVideo
+            ) { progress ->
+                val pct = (progress * 100).toInt().coerceIn(0, 99)
+                _postUploadState.value = PostUploadState.Uploading(
+                    progress = progress,
+                    statusText = if (progress > 0f) {
+                        "Uploading to Firebase Storage ($pct%)..."
+                    } else {
+                        "Uploading media to Firebase Storage..."
+                    }
+                )
+            }
+
+            if (uploadRes.isFailure) {
+                val errMsg = uploadRes.exceptionOrNull()?.localizedMessage
+                    ?: "Failed to upload media to Firebase Storage"
+                _postUploadState.value = PostUploadState.Error(errMsg)
+                _snackbarMessage.value = errMsg
+                return@launch
+            }
+
+            val hostedMediaUrl = uploadRes.getOrNull() ?: imageUrl
+            _postUploadState.value = PostUploadState.Uploading(
+                progress = 1f,
+                statusText = "Publishing post to Firestore..."
+            )
+
             val res = repository.createPost(
                 userId = currentUserId,
                 username = user.username,
                 avatarUrl = user.avatarUrl,
                 caption = caption,
-                imageUrl = imageUrl,
+                imageUrl = hostedMediaUrl,
                 location = location,
                 hashtags = hashtags
             )
             if (res.isSuccess) {
                 val createdPostId = res.getOrNull()
+                _postUploadState.value = PostUploadState.Idle
                 _aiCaptionState.value = AiCaptionUiState.Idle
-                _snackbarMessage.value = "Post published to Firestore! 🎉"
+                _snackbarMessage.value = "Post uploaded & published to Firestore! 🎉"
                 _currentTab.value = NavigationTab.HOME
                 val reactor = SampleData.sampleUsers.firstOrNull()
                 if (reactor != null) {
@@ -1293,12 +1403,14 @@ class InstagramViewModel(
                         recordPostLikeActivity(
                             actor = reactor,
                             postId = createdPostId,
-                            postThumbnailUrl = imageUrl
+                            postThumbnailUrl = hostedMediaUrl
                         )
                     }
                 }
             } else {
-                _snackbarMessage.value = res.exceptionOrNull()?.localizedMessage ?: "Failed to publish post"
+                val errMsg = res.exceptionOrNull()?.localizedMessage ?: "Failed to publish post"
+                _postUploadState.value = PostUploadState.Error(errMsg)
+                _snackbarMessage.value = errMsg
             }
         }
     }

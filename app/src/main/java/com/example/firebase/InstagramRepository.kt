@@ -1,6 +1,8 @@
 package com.example.firebase
 
 import android.content.Context
+import android.net.Uri
+import android.util.Log
 import com.example.R
 import com.example.data.SampleData
 import com.google.firebase.Firebase
@@ -13,6 +15,11 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.snapshots
+import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.OnProgressListener
+import com.google.firebase.storage.StorageMetadata
+import com.google.firebase.storage.UploadTask
+import com.google.firebase.storage.storage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -20,6 +27,7 @@ import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
+import java.util.UUID
 
 interface SocialDataSource {
     fun observeUserProfile(userId: String): Flow<FirestoreUserProfile?>
@@ -29,6 +37,12 @@ interface SocialDataSource {
     fun observeUserComments(userId: String): Flow<List<FirestoreUserComment>>
     suspend fun ensureUserProfile(userId: String, displayName: String?, photoUrl: String?): Result<Unit>
     suspend fun updateProfile(userId: String, username: String, fullName: String, bio: String, link: String): Result<Unit>
+    suspend fun uploadPostMedia(
+        userId: String,
+        mediaUriString: String,
+        isVideo: Boolean,
+        onProgress: (Float) -> Unit = {}
+    ): Result<String>
     suspend fun createPost(
         userId: String,
         username: String,
@@ -59,7 +73,8 @@ interface SocialDataSource {
 
 class InstagramRepository(
     private val db: FirebaseFirestore,
-    private val auth: FirebaseAuth = Firebase.auth
+    private val auth: FirebaseAuth = Firebase.auth,
+    private val storage: FirebaseStorage = Firebase.storage
 ) : SocialDataSource {
     constructor(context: Context) : this(
         FirebaseFirestore.getInstance(
@@ -269,6 +284,52 @@ class InstagramRepository(
             throw e
         } catch (e: Exception) {
             handleFirestoreError(e, OperationType.UPDATE, path)
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun uploadPostMedia(
+        userId: String,
+        mediaUriString: String,
+        isVideo: Boolean,
+        onProgress: (Float) -> Unit
+    ): Result<String> {
+        if (mediaUriString.startsWith("http://") || mediaUriString.startsWith("https://")) {
+            onProgress(1f)
+            return Result.success(mediaUriString)
+        }
+        return try {
+            val uid = requireUserId()
+            check(uid == userId) { "Signed-in user mismatch" }
+            val localUri = Uri.parse(mediaUriString)
+            val ext = if (isVideo) "mp4" else "jpg"
+            val objectPath = "users/$uid/posts/${System.currentTimeMillis()}_${UUID.randomUUID()}.$ext"
+            val ref = storage.reference.child(objectPath)
+            val metadata = StorageMetadata.Builder()
+                .setContentType(if (isVideo) "video/mp4" else "image/jpeg")
+                .build()
+
+            val uploadTask = ref.putFile(localUri, metadata)
+            val listener = OnProgressListener<UploadTask.TaskSnapshot> { snapshot ->
+                val total = snapshot.totalByteCount
+                if (total > 0L) {
+                    val fraction = (snapshot.bytesTransferred.toFloat() / total.toFloat()).coerceIn(0f, 0.99f)
+                    onProgress(fraction)
+                }
+            }
+            uploadTask.addOnProgressListener(listener)
+            try {
+                uploadTask.await()
+            } finally {
+                uploadTask.removeOnProgressListener(listener)
+            }
+            val downloadUrl = ref.downloadUrl.await().toString()
+            onProgress(1f)
+            Result.success(downloadUrl)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e("InstagramRepository", "Firebase Storage upload failed", e)
             Result.failure(e)
         }
     }

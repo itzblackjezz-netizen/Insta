@@ -45,6 +45,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.example.data.SampleData
+import com.example.model.Comment
 import com.example.model.Post
 import com.example.model.User
 import com.example.ui.components.PostCard
@@ -81,6 +82,8 @@ fun ExploreScreen(
     onOptionsPost: (Post) -> Unit = {},
     onAiInsightsPost: (Post) -> Unit = {},
     onAddQuickComment: (String, String) -> Unit = { _, _ -> },
+    onLikeComment: (String, String) -> Unit = { _, _ -> },
+    onReplyComment: (String, Comment, String) -> Unit = { _, _, _ -> },
     onUserClick: (User) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -684,6 +687,8 @@ fun ExploreScreen(
             onOptionsClick = { onOptionsPost(post) },
             onAiInsightsClick = { onAiInsightsPost(post) },
             onAddQuickComment = { text -> onAddQuickComment(post.id, text) },
+            onLikeComment = { commentId -> onLikeComment(post.id, commentId) },
+            onReplyComment = { parent, text -> onReplyComment(post.id, parent, text) },
             onDismiss = { selectedPostId = null }
         )
     }
@@ -1086,6 +1091,8 @@ private fun ExplorePostDetailDialog(
     onOptionsClick: () -> Unit,
     onAiInsightsClick: () -> Unit,
     onAddQuickComment: (String) -> Unit,
+    onLikeComment: (String) -> Unit,
+    onReplyComment: (Comment, String) -> Unit,
     onDismiss: () -> Unit
 ) {
     Dialog(
@@ -1160,7 +1167,9 @@ private fun ExplorePostDetailDialog(
                         onOptionsClick = onOptionsClick,
                         onAiInsightsClick = onAiInsightsClick,
                         onUserClick = {},
-                        onAddQuickComment = onAddQuickComment
+                        onAddQuickComment = onAddQuickComment,
+                        onLikeComment = onLikeComment,
+                        onReplyComment = onReplyComment
                     )
                 }
             }

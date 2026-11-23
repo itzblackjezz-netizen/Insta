@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import com.example.model.Comment
 import com.example.model.Post
 import com.example.model.Story
 import com.example.model.User
@@ -49,6 +50,8 @@ fun HomeScreen(
     onAiInsightsClick: (Post) -> Unit,
     onUserClick: (User) -> Unit,
     onAddQuickComment: (String, String) -> Unit,
+    onLikeComment: (String, String) -> Unit = { _, _ -> },
+    onReplyComment: (String, Comment, String) -> Unit = { _, _, _ -> },
     onLoadMore: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -130,6 +133,8 @@ fun HomeScreen(
                     onAiInsightsClick = { onAiInsightsClick(post) },
                     onUserClick = { onUserClick(post.user) },
                     onAddQuickComment = { text -> onAddQuickComment(post.id, text) },
+                    onLikeComment = { commentId -> onLikeComment(post.id, commentId) },
+                    onReplyComment = { parent, text -> onReplyComment(post.id, parent, text) },
                     modifier = Modifier
                         .widthIn(max = 600.dp)
                         .fillMaxWidth()

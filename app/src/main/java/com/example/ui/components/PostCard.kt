@@ -13,9 +13,12 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.VolumeMute
@@ -32,6 +35,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -39,10 +44,13 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.example.model.Comment
 import com.example.model.Post
 import com.example.ui.theme.IgBlue
 import com.example.ui.theme.IgLightHashtag
@@ -64,12 +72,19 @@ fun PostCard(
     onAiInsightsClick: () -> Unit,
     onUserClick: () -> Unit,
     onAddQuickComment: (String) -> Unit,
+    onLikeComment: (String) -> Unit = {},
+    onReplyComment: (Comment, String) -> Unit = { parent, text ->
+        onAddQuickComment("@${parent.username} $text")
+    },
     modifier: Modifier = Modifier
 ) {
     var showHeartAnimation by remember { mutableStateOf(false) }
     var isMuted by remember { mutableStateOf(true) }
     var quickCommentText by remember { mutableStateOf("") }
+    var replyingToComment by remember(post.id) { mutableStateOf<Comment?>(null) }
+    var showAllInlineComments by remember(post.id) { mutableStateOf(false) }
     var isCaptionExpanded by remember { mutableStateOf(false) }
+    val commentFocusRequester = remember { FocusRequester() }
 
     val formattedLikes = remember(post.likesCount) {
         NumberFormat.getNumberInstance(Locale.US).format(post.likesCount)
@@ -447,103 +462,36 @@ fun PostCard(
             }
         }
 
-        // Comments Count / Preview
-        if (post.commentsCount > 0) {
-            Text(
-                text = "View all ${post.commentsCount} comments",
-                style = MaterialTheme.typography.bodySmall.copy(
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 12.5.sp
-                ),
-                modifier = Modifier
-                    .padding(horizontal = 14.dp, vertical = 4.dp)
-                    .clickable(onClick = onCommentClick)
-                    .testTag("view_comments_button_${post.id}")
-            )
-
-            // Top Comment Preview
-            post.comments.firstOrNull()?.let { topComment ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 2.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    Text(
-                        text = buildAnnotatedString {
-                            withStyle(
-                                SpanStyle(
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 12.5.sp
-                                )
-                            ) {
-                                append(topComment.username)
-                                append(" ")
-                            }
-                            append(topComment.text)
-                        },
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontSize = 12.5.sp,
-                            lineHeight = 16.sp
-                        ),
-                        color = MaterialTheme.colorScheme.onBackground,
-                        maxLines = 1
-                    )
+        // Inline Comment List Section (View existing comments, reply, like, and submit new comments)
+        PostCommentListSection(
+            post = post,
+            showAllInlineComments = showAllInlineComments,
+            onToggleExpandComments = { showAllInlineComments = !showAllInlineComments },
+            onOpenCommentsSheet = onCommentClick,
+            onLikeComment = onLikeComment,
+            onStartReply = { comment ->
+                replyingToComment = comment
+                commentFocusRequester.requestFocus()
+            },
+            commentText = quickCommentText,
+            onCommentTextChange = { quickCommentText = it },
+            replyingToComment = replyingToComment,
+            onCancelReply = { replyingToComment = null },
+            focusRequester = commentFocusRequester,
+            onSubmitComment = {
+                val trimmed = quickCommentText.trim()
+                if (trimmed.isNotEmpty()) {
+                    val target = replyingToComment
+                    if (target != null) {
+                        onReplyComment(target, trimmed)
+                    } else {
+                        onAddQuickComment(trimmed)
+                    }
+                    quickCommentText = ""
+                    replyingToComment = null
                 }
             }
-        }
-
-        // Inline Quick Comment Input
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Text input
-            TextField(
-                value = quickCommentText,
-                onValueChange = { quickCommentText = it },
-                placeholder = {
-                    Text(
-                        text = "Add a comment...",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                            fontSize = 12.5.sp
-                        )
-                    )
-                },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(44.dp)
-                    .testTag("quick_comment_input_${post.id}"),
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = Color.Transparent,
-                    unfocusedContainerColor = Color.Transparent,
-                    disabledContainerColor = Color.Transparent,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent
-                ),
-                singleLine = true
-            )
-
-            if (quickCommentText.isNotBlank()) {
-                Text(
-                    text = "Post",
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = IgBlue
-                    ),
-                    modifier = Modifier
-                        .clickable {
-                            onAddQuickComment(quickCommentText)
-                            quickCommentText = ""
-                        }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                        .testTag("quick_comment_post_button_${post.id}")
-                )
-            }
-        }
+        )
 
         // Time Posted
         Text(
@@ -560,5 +508,338 @@ fun PostCard(
             color = MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
             thickness = 0.5.dp
         )
+    }
+}
+
+@Composable
+private fun PostCommentListSection(
+    post: Post,
+    showAllInlineComments: Boolean,
+    onToggleExpandComments: () -> Unit,
+    onOpenCommentsSheet: () -> Unit,
+    onLikeComment: (String) -> Unit,
+    onStartReply: (Comment) -> Unit,
+    commentText: String,
+    onCommentTextChange: (String) -> Unit,
+    replyingToComment: Comment?,
+    onCancelReply: () -> Unit,
+    focusRequester: FocusRequester,
+    onSubmitComment: () -> Unit
+) {
+    val visibleComments = remember(post.comments, showAllInlineComments) {
+        if (showAllInlineComments) post.comments else post.comments.take(3)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp)
+            .testTag("post_comment_list_section_${post.id}")
+    ) {
+        // Header row: Comments count & View all trigger
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (post.commentsCount > 0 || post.comments.isNotEmpty()) {
+                Text(
+                    text = "View all ${maxOf(post.commentsCount, post.comments.size)} comments",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 12.5.sp
+                    ),
+                    modifier = Modifier
+                        .clickable(onClick = onOpenCommentsSheet)
+                        .padding(vertical = 2.dp)
+                        .testTag("view_comments_button_${post.id}")
+                )
+            } else {
+                Text(
+                    text = "No comments yet",
+                    style = MaterialTheme.typography.bodySmall.copy(
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp
+                    )
+                )
+            }
+
+            if (post.comments.size > 3) {
+                Text(
+                    text = if (showAllInlineComments) "Show fewer" else "Show more (${post.comments.size})",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        color = IgBlue,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 11.5.sp
+                    ),
+                    modifier = Modifier
+                        .clickable(onClick = onToggleExpandComments)
+                        .padding(vertical = 2.dp)
+                        .testTag("toggle_inline_comments_${post.id}")
+                )
+            }
+        }
+
+        // Inline Comment Items
+        if (visibleComments.isNotEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 4.dp)
+                    .testTag("post_comments_list_${post.id}"),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                visibleComments.forEach { comment ->
+                    InlineCommentRow(
+                        comment = comment,
+                        onLikeClick = { onLikeComment(comment.id) },
+                        onReplyClick = { onStartReply(comment) }
+                    )
+                }
+            }
+        }
+
+        // Active Reply Indicator Chip
+        if (replyingToComment != null) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 4.dp)
+                    .testTag("replying_to_banner_${post.id}")
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Replying to @${replyingToComment.username}",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 11.5.sp
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    IconButton(
+                        onClick = onCancelReply,
+                        modifier = Modifier
+                            .size(20.dp)
+                            .testTag("cancel_reply_button_${post.id}")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Cancel reply",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // Inline Comment / Reply Composer Input Field
+        Surface(
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 6.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 12.dp, end = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextField(
+                    value = commentText,
+                    onValueChange = onCommentTextChange,
+                    placeholder = {
+                        Text(
+                            text = if (replyingToComment != null) {
+                                "Reply to @${replyingToComment.username}..."
+                            } else {
+                                "Add a comment..."
+                            },
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f),
+                                fontSize = 12.5.sp
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 44.dp)
+                        .focusRequester(focusRequester)
+                        .testTag("quick_comment_input_${post.id}"),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        disabledContainerColor = Color.Transparent,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent
+                    ),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                    keyboardActions = KeyboardActions(onSend = { onSubmitComment() }),
+                    singleLine = true
+                )
+
+                TextButton(
+                    onClick = onSubmitComment,
+                    enabled = commentText.isNotBlank(),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    modifier = Modifier.testTag("quick_comment_post_button_${post.id}")
+                ) {
+                    Text(
+                        text = if (replyingToComment != null) "Reply" else "Post",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = if (commentText.isNotBlank()) IgBlue else IgBlue.copy(alpha = 0.4f)
+                        )
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InlineCommentRow(
+    comment: Comment,
+    onLikeClick: () -> Unit,
+    onReplyClick: () -> Unit
+) {
+    val isReply = comment.replyToUsername != null || comment.text.trimStart().startsWith("@")
+    val formattedText = remember(comment.username, comment.text) {
+        buildAnnotatedString {
+            withStyle(
+                SpanStyle(
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 12.5.sp
+                )
+            ) {
+                append(comment.username)
+                append(" ")
+            }
+            val mentionMatch = Regex("^(@[A-Za-z0-9._]+)(\\s+.*)?$").find(comment.text)
+            if (mentionMatch != null) {
+                val mention = mentionMatch.groupValues[1]
+                val rest = mentionMatch.groupValues[2]
+                withStyle(
+                    SpanStyle(
+                        color = IgLightHashtag,
+                        fontWeight = FontWeight.Medium
+                    )
+                ) {
+                    append(mention)
+                }
+                append(rest)
+            } else {
+                append(comment.text)
+            }
+        }
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = if (isReply) 20.dp else 0.dp)
+            .testTag("feed_comment_item_${comment.id}"),
+        verticalAlignment = Alignment.Top
+    ) {
+        if (isReply) {
+            Box(
+                modifier = Modifier
+                    .padding(end = 8.dp, top = 4.dp)
+                    .width(2.dp)
+                    .height(26.dp)
+                    .clip(RoundedCornerShape(1.dp))
+                    .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
+            )
+        }
+
+        AsyncImage(
+            model = comment.userAvatar,
+            contentDescription = "${comment.username} avatar",
+            modifier = Modifier
+                .padding(top = 2.dp)
+                .size(24.dp)
+                .clip(CircleShape),
+            contentScale = ContentScale.Crop
+        )
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = formattedText,
+                style = MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 12.5.sp,
+                    lineHeight = 16.sp
+                ),
+                color = MaterialTheme.colorScheme.onBackground,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Row(
+                modifier = Modifier.padding(top = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = comment.timestamp,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (comment.likesCount > 0) {
+                    Text(
+                        text = "${comment.likesCount} ${if (comment.likesCount == 1) "like" else "likes"}",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Medium
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Text(
+                    text = "Reply",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .clickable(onClick = onReplyClick)
+                        .padding(horizontal = 2.dp, vertical = 2.dp)
+                        .testTag("feed_comment_reply_${comment.id}")
+                )
+            }
+        }
+
+        IconButton(
+            onClick = onLikeClick,
+            modifier = Modifier
+                .size(28.dp)
+                .testTag("feed_comment_like_${comment.id}")
+        ) {
+            Icon(
+                imageVector = if (comment.isLiked) Icons.Default.Favorite else Icons.Outlined.FavoriteBorder,
+                contentDescription = if (comment.isLiked) "Unlike comment" else "Like comment",
+                tint = if (comment.isLiked) IgRed else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(14.dp)
+            )
+        }
     }
 }

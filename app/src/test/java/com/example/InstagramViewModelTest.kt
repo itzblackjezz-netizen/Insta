@@ -88,6 +88,30 @@ private class FakeSocialDataSource : SocialDataSource {
         return Result.success(Unit)
     }
 
+    var shouldFailMediaUpload = false
+    var uploadedMediaCalls = mutableListOf<String>()
+
+    override suspend fun uploadPostMedia(
+        userId: String,
+        mediaUriString: String,
+        isVideo: Boolean,
+        onProgress: (Float) -> Unit
+    ): Result<String> {
+        uploadedMediaCalls.add(mediaUriString)
+        if (shouldFailMediaUpload) {
+            return Result.failure(IllegalStateException("Storage bucket unavailable"))
+        }
+        onProgress(0.5f)
+        val hostedUrl = if (mediaUriString.startsWith("http")) {
+            mediaUriString
+        } else {
+            val ext = if (isVideo) "mp4" else "jpg"
+            "https://firebasestorage.googleapis.com/v0/b/test-bucket/o/users%2F$userId%2Fposts%2Fupload.$ext?alt=media"
+        }
+        onProgress(1f)
+        return Result.success(hostedUrl)
+    }
+
     override suspend fun createPost(
         userId: String,
         username: String,
@@ -279,6 +303,33 @@ class InstagramViewModelTest {
     }
 
     @Test
+    fun testReplyToCommentAndToggleLikeComment() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.posts.collect {} }
+        val post = viewModel.posts.value.first { it.comments.isNotEmpty() }
+        val targetComment = post.comments.first()
+        val wasLiked = targetComment.isLiked
+        val initialCommentLikes = targetComment.likesCount
+
+        viewModel.toggleLikeComment(post.id, targetComment.id)
+        val afterLikePost = viewModel.posts.value.first { it.id == post.id }
+        val likedComment = afterLikePost.comments.first { it.id == targetComment.id }
+        assertEquals(!wasLiked, likedComment.isLiked)
+        if (!wasLiked) {
+            assertEquals(initialCommentLikes + 1, likedComment.likesCount)
+        } else {
+            assertEquals(maxOf(0, initialCommentLikes - 1), likedComment.likesCount)
+        }
+
+        viewModel.replyToComment(post.id, targetComment, "Totally agree with your take!")
+        val afterReplyPost = viewModel.posts.value.first { it.id == post.id }
+        val replyComment = afterReplyPost.comments.firstOrNull {
+            it.text == "@${targetComment.username} Totally agree with your take!"
+        }
+        assertNotNull(replyComment)
+        assertEquals(targetComment.username, replyComment!!.replyToUsername)
+    }
+
+    @Test
     fun testToggleSavePost() = runTest {
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.posts.collect {} }
         val post = viewModel.posts.value.first()
@@ -411,6 +462,43 @@ class InstagramViewModelTest {
 
         assertFalse(viewModel.posts.value.any { it.id == created.id })
         assertEquals("Post deleted", viewModel.snackbarMessage.value)
+    }
+
+    @Test
+    fun testCreatePostUploadsCameraPhotoToStorageAndPublishesWithCaption() = runTest {
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { viewModel.posts.collect {} }
+        val localCameraUri = "content://com.aistudio.instasnap.qzvm.fileprovider/camera_images/capture_12345.jpg"
+
+        viewModel.createPost(
+            caption = "Fresh camera shot at Golden Gate #camera #sanfrancisco",
+            imageUrl = localCameraUri,
+            location = "San Francisco, CA",
+            isVideo = false
+        )
+
+        assertTrue(repository.uploadedMediaCalls.contains(localCameraUri))
+        val published = viewModel.posts.value.firstOrNull {
+            it.caption.contains("Fresh camera shot at Golden Gate")
+        }
+        assertNotNull(published)
+        assertTrue(published!!.mediaUrls.first().startsWith("https://firebasestorage.googleapis.com/"))
+        assertEquals(NavigationTab.HOME, viewModel.currentTab.value)
+        assertEquals(com.example.ui.viewmodel.PostUploadState.Idle, viewModel.postUploadState.value)
+    }
+
+    @Test
+    fun testCreatePostStorageUploadFailureKeepsUserOnCreateScreen() = runTest {
+        repository.shouldFailMediaUpload = true
+        viewModel.selectTab(NavigationTab.CREATE)
+
+        viewModel.createPost(
+            caption = "Failed upload test",
+            imageUrl = "content://com.aistudio.instasnap.qzvm.fileprovider/camera_images/fail.jpg"
+        )
+
+        assertEquals(NavigationTab.CREATE, viewModel.currentTab.value)
+        assertTrue(viewModel.postUploadState.value is com.example.ui.viewmodel.PostUploadState.Error)
+        assertEquals("Storage bucket unavailable", viewModel.snackbarMessage.value)
     }
 
     @Test
