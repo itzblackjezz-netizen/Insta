@@ -56,13 +56,13 @@ fun InstagramTopAppBar(
             // Action Icons
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 // Theme Toggle
                 IconButton(
                     onClick = onToggleDarkMode,
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(48.dp)
                         .testTag("theme_toggle_button")
                 ) {
                     Icon(
@@ -76,7 +76,8 @@ fun InstagramTopAppBar(
                 // Notifications (Heart)
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(48.dp)
+                        .clip(CircleShape)
                         .clickable(onClick = onOpenNotifications)
                         .testTag("notifications_button"),
                     contentAlignment = Alignment.Center
@@ -91,7 +92,7 @@ fun InstagramTopAppBar(
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .offset(x = 2.dp, y = 2.dp)
+                                .offset(x = (-9).dp, y = 9.dp)
                                 .size(8.dp)
                                 .clip(CircleShape)
                                 .background(IgPink)
@@ -102,7 +103,8 @@ fun InstagramTopAppBar(
                 // Direct Messages (Paper Plane / Send)
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(48.dp)
+                        .clip(CircleShape)
                         .clickable(onClick = onOpenDirectMessages)
                         .testTag("direct_messages_button"),
                     contentAlignment = Alignment.Center
@@ -117,7 +119,7 @@ fun InstagramTopAppBar(
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
-                                .offset(x = 4.dp, y = (-2).dp)
+                                .offset(x = (-6).dp, y = 6.dp)
                                 .defaultMinSize(minWidth = 16.dp, minHeight = 16.dp)
                                 .clip(CircleShape)
                                 .background(IgPink)

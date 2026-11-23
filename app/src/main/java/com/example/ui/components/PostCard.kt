@@ -38,6 +38,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -53,6 +54,7 @@ import coil.compose.AsyncImage
 import com.example.model.Comment
 import com.example.model.Post
 import com.example.ui.theme.IgBlue
+import com.example.ui.theme.IgDarkHashtag
 import com.example.ui.theme.IgLightHashtag
 import com.example.ui.theme.IgPink
 import com.example.ui.theme.IgRed
@@ -85,6 +87,9 @@ fun PostCard(
     var showAllInlineComments by remember(post.id) { mutableStateOf(false) }
     var isCaptionExpanded by remember { mutableStateOf(false) }
     val commentFocusRequester = remember { FocusRequester() }
+
+    val isDarkSurface = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val hashtagColor = if (isDarkSurface) IgDarkHashtag else IgLightHashtag
 
     val formattedLikes = remember(post.likesCount) {
         NumberFormat.getNumberInstance(Locale.US).format(post.likesCount)
@@ -179,7 +184,8 @@ fun PostCard(
             IconButton(
                 onClick = onOptionsClick,
                 modifier = Modifier
-                    .size(36.dp)
+                    .minimumInteractiveComponentSize()
+                    .size(40.dp)
                     .testTag("post_options_button_${post.id}")
             ) {
                 Icon(
@@ -270,13 +276,13 @@ fun PostCard(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = 8.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 // Like Button with Bounce
                 val likeScale by animateFloatAsState(
@@ -295,7 +301,8 @@ fun PostCard(
                 IconButton(
                     onClick = onLikeClick,
                     modifier = Modifier
-                        .size(34.dp)
+                        .minimumInteractiveComponentSize()
+                        .size(42.dp)
                         .scale(likeScale)
                         .testTag("like_button_${post.id}")
                 ) {
@@ -311,7 +318,8 @@ fun PostCard(
                 IconButton(
                     onClick = onCommentClick,
                     modifier = Modifier
-                        .size(34.dp)
+                        .minimumInteractiveComponentSize()
+                        .size(42.dp)
                         .testTag("comment_button_${post.id}")
                 ) {
                     Icon(
@@ -326,7 +334,8 @@ fun PostCard(
                 IconButton(
                     onClick = onShareClick,
                     modifier = Modifier
-                        .size(34.dp)
+                        .minimumInteractiveComponentSize()
+                        .size(42.dp)
                         .testTag("share_button_${post.id}")
                 ) {
                     Icon(
@@ -341,7 +350,8 @@ fun PostCard(
                 IconButton(
                     onClick = onAiInsightsClick,
                     modifier = Modifier
-                        .size(34.dp)
+                        .minimumInteractiveComponentSize()
+                        .size(42.dp)
                         .testTag("ai_insights_button_${post.id}")
                 ) {
                     Icon(
@@ -377,7 +387,8 @@ fun PostCard(
             IconButton(
                 onClick = onSaveClick,
                 modifier = Modifier
-                    .size(34.dp)
+                    .minimumInteractiveComponentSize()
+                    .size(42.dp)
                     .testTag("save_button_${post.id}")
             ) {
                 Icon(
@@ -406,7 +417,7 @@ fun PostCard(
         Spacer(modifier = Modifier.height(4.dp))
 
         // Caption with Hashtags
-        val captionString = remember(post.caption, post.user.username, post.hashtags) {
+        val captionString = remember(post.caption, post.user.username, post.hashtags, hashtagColor) {
             buildAnnotatedString {
                 withStyle(
                     SpanStyle(
@@ -423,7 +434,7 @@ fun PostCard(
                     post.hashtags.forEach { tag ->
                         withStyle(
                             SpanStyle(
-                                color = IgLightHashtag,
+                                color = hashtagColor,
                                 fontWeight = FontWeight.Medium
                             )
                         ) {
@@ -437,6 +448,7 @@ fun PostCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .clickable(enabled = post.caption.length > 80) { isCaptionExpanded = !isCaptionExpanded }
                 .padding(horizontal = 14.dp)
         ) {
             Text(
@@ -721,7 +733,9 @@ private fun InlineCommentRow(
     onReplyClick: () -> Unit
 ) {
     val isReply = comment.replyToUsername != null || comment.text.trimStart().startsWith("@")
-    val formattedText = remember(comment.username, comment.text) {
+    val isDarkSurface = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val mentionColor = if (isDarkSurface) IgDarkHashtag else IgLightHashtag
+    val formattedText = remember(comment.username, comment.text, mentionColor) {
         buildAnnotatedString {
             withStyle(
                 SpanStyle(
@@ -738,7 +752,7 @@ private fun InlineCommentRow(
                 val rest = mentionMatch.groupValues[2]
                 withStyle(
                     SpanStyle(
-                        color = IgLightHashtag,
+                        color = mentionColor,
                         fontWeight = FontWeight.Medium
                     )
                 ) {
